@@ -1,0 +1,4 @@
+# app-ads.txt for Read the Room (com.afropenguin.readtheroom)
+# When AdMob asks for it, replace the line below with the exact line AdMob shows you
+# (AdMob > Apps > View all apps > app-ads.txt). It should look like this:
+google.com, pub-5741087839697471, DIRECT, f08c47fec0942fa0
