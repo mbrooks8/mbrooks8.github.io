@@ -51,6 +51,14 @@ export const store = {
   get tutorialStep() { return int('tutorialStep', 0); }, set tutorialStep(v) { set('tutorialStep', v); },
   get seenIntro() { return bool('seenIntro', false); }, set seenIntro(v) { set('seenIntro', v); },
 
+  get playerName() { return (get('playerName', '') || '').slice(0, 20); }, set playerName(v) { set('playerName', String(v || '').slice(0, 20)); },
+  /** Random id for this browser, so a host can give a returning player their seat back. */
+  get installId() {
+    let id = get('installId', null);
+    if (!id) { id = Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 8); set('installId', id); }
+    return id;
+  },
+
   get savedGame() { return get('saved', null) || null; }, set savedGame(v) { set('saved', v); },
   get savedMode() { return get('savedMode', 'free') || 'free'; }, set savedMode(v) { set('savedMode', v); },
 
