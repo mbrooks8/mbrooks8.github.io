@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.fenceline.app",
+      "sha256_cert_fingerprints": [
+        "34:3E:BA:A6:48:BF:12:FD:BF:79:F1:FC:62:38:26:B6:FA:9C:07:00:F1:24:D6:2B:2E:7E:61:DD:49:3E:28:88"
+      ]
+    }
+  }
+]
