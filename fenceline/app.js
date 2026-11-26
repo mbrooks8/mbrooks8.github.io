@@ -1,12 +1,23 @@
 // Fenceline for the web: main menu, game screen, lessons and dialogs.
-// Mirrors MainActivity.kt and GameActivity.kt from the Android app (without Play together or leaderboards).
+// Mirrors MainActivity.kt and GameActivity.kt from the Android app (Play together runs online here; no leaderboards).
 import { Shape, Edge, Grid, Puzzle, PuzzleCode, PuzzleGenerator, Game, Tutorial, Boards, dailySeed } from './core.js';
 import { store, formatTime } from './store.js';
 import { theme, applyTheme, onThemeChange, el, text, button, chip, row, dialog, sk, setLabel, closeTopDialog, closeAllDialogs, redrawBoxes } from './ui.js';
 import { BoardView } from './board.js';
 import { PENCILS, pencilColor, pencilLine } from './sketch.js';
+import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
+import { Link, cleanCode } from './net.js';
 
 const SHARE_BASE = 'https://mbrooks8.github.io/fenceline/?p=';
+const JOIN_BASE = 'https://mbrooks8.github.io/fenceline/?join=';
+
+/** Big boards for co-op group play, about 400 to 900 cells (Store.kt groupSizes). */
+const GROUP_SIZES = {
+  SQUARE: ['20x20', '25x25', '30x30'],
+  HEX: ['18x22', '22x28', '26x34'],
+  TRIANGLE: ['14x15', '17x19', '20x22'],
+  CAIRO: ['14x16', '17x20', '20x23'],
+};
 const isAndroid = /Android/i.test(navigator.userAgent);
 const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
@@ -289,7 +300,7 @@ function showMenu() {
       openGame({ mode: 'free', w, h, d: store.lastDifficulty, shape: store.lastShape });
     }, { size: 20, accent: 'accent' })));
 
-    kids.push(el('div', { class: 'gap26' }, button('Enter a code', codeDialog, { size: 16 })));
+    kids.push(el('div', { class: 'row gap26' }, button('Enter a code', codeDialog, { size: 16 }), button('Play together', () => playTogetherDialog(), { size: 16 })));
     kids.push(el('div', { class: 'row gap8' },
       button('Learn', () => openGame({ mode: 'tutorial', step: Math.max(0, Math.min(Tutorial.steps.length - 1, store.tutorialStep)) }), { size: 16 }),
       button('Stats', statsDialog, { size: 16 }),
@@ -384,6 +395,82 @@ function historyDialog() {
   d = dialog(el('div', { class: 'col' }, ...kids));
 }
 
+// ---- play together ----
+
+/** Pick versus or co-op and a board, then host or join (MainActivity.playTogetherDialog). */
+function playTogetherDialog() {
+  let d;
+  const col = el('div', { class: 'col' });
+  let coop = false;
+  let shape = store.lastShape;
+  let size = store.lastSize;
+  let diff = store.lastDifficulty;
+  const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
+  name.value = store.playerName;
+  const saveName = () => { store.playerName = name.value.trim(); };
+  const fill = () => {
+    const sizes = Boards.sizes(shape).concat(coop ? GROUP_SIZES[shape.name] : []);
+    if (!sizes.includes(size)) size = Boards.defaultSize ? Boards.defaultSize(shape) : Boards.sizes(shape)[1];
+    const kids = [
+      text('Play together', { size: 26, bold: true }),
+      text('Online, with friends anywhere.', { size: 15, color: 'inkSoft' }),
+      sk(el('div', { class: 'inputbox' }, name), { stroke: 'inkSoft', width: 1.6 }),
+      el('div', { class: 'row gap12' },
+        chip('Versus', !coop, () => { coop = false; fill(); }),
+        chip('Co-op', coop, () => { coop = true; fill(); })),
+      text(coop ? 'Draw one loop together.' : 'Same puzzle, first loop wins.', { size: 15, color: 'inkSoft' }),
+      el('div', { class: 'row gap6' }, ...Shape.entries.map(sh => chip(sh.label, shape === sh, () => { shape = sh; fill(); }, { size: 13 }))),
+      text(`${shape.label} board`, { size: 15, color: 'inkSoft' }),
+    ];
+    for (let i = 0; i < sizes.length; i += 4) {
+      kids.push(el('div', { class: 'row gap6' }, ...sizes.slice(i, i + 4).map(s =>
+        chip(s.replace('x', '×'), size === s, () => { size = s; fill(); }))));
+    }
+    kids.push(el('div', { class: 'row gap6' }, ...['EASY', 'MEDIUM', 'HARD'].map(dd => chip(cap(dd), diff === dd, () => { diff = dd; fill(); }))));
+    const go = role => {
+      saveName();
+      d.close();
+      if (role === 'join') { joinDialog(''); return; }
+      const [w, h] = size.split('x').map(Number);
+      openGame({ mode: 'mp', role: 'host', mpMode: coop ? Mode.COOP : Mode.VERSUS, w, h, d: diff, shape });
+    };
+    kids.push(el('div', { class: 'row gap16' },
+      button('Host', () => go('host'), { size: 18, accent: 'accent' }),
+      button('Join', () => go('join'), { size: 18, accent: 'accent' })));
+    kids.push(el('div', { class: 'gap8' }, button('Close', () => { saveName(); d.close(); }, { size: 16 })));
+    col.replaceChildren(...kids);
+  };
+  fill();
+  d = dialog(col);
+}
+
+/** Type (or follow a link with) a friend's room code. */
+function joinDialog(prefill) {
+  let d;
+  const code = el('input', { class: 'codein roomin', type: 'text', placeholder: 'ABCD', maxlength: '6', autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false' });
+  code.value = (prefill || '').toUpperCase();
+  const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
+  name.value = store.playerName;
+  const error = text('', { size: 15, color: 'error' });
+  const go = () => {
+    const c = cleanCode(code.value);
+    if (c.length !== 4) { error.textContent = 'Room codes have 4 letters.'; return; }
+    store.playerName = name.value.trim();
+    d.close();
+    openGame({ mode: 'mp', role: 'join', code: c });
+  };
+  for (const i of [code, name]) i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  d = dialog(el('div', { class: 'col' },
+    text('Join a game', { size: 24, bold: true }),
+    text('Type the room code from your friend.', { size: 15, color: 'inkSoft' }),
+    sk(el('div', { class: 'inputbox' }, code), { stroke: 'inkSoft', width: 1.6 }),
+    sk(el('div', { class: 'inputbox' }, name), { stroke: 'inkSoft', width: 1.6 }),
+    error,
+    el('div', { class: 'row gap12' }, button('Cancel', () => d.close(), { size: 17 }), button('Join', go, { size: 17, accent: 'accent' })),
+  ));
+  setTimeout(() => (code.value ? name : code).focus(), 50);
+}
+
 // ---- game screen ----
 
 let inGameHistory = false;
@@ -396,6 +483,7 @@ function openGame(opts) {
 }
 
 function leaveGame() {
+  closeAllDialogs();
   if (inGameHistory) { history.back(); return; } // popstate shows the menu
   showMenu();
 }
@@ -413,6 +501,13 @@ window.addEventListener('popstate', () => {
 function showGame(opts) {
   let mode = opts.mode, step = opts.step || 0;
   let game = null, resumedAt = 0, winShown = false, pendingFix = null, guide = [], guideAt = 0, disposed = false;
+  // Play together.
+  let link = null, room = null, coop = null;
+  let mpMode = opts.mpMode || Mode.VERSUS, mpW = opts.w || 7, mpH = opts.h || 7, mpDiff = opts.d || 'EASY', mpShape = opts.shape || Shape.SQUARE;
+  let lobbyD = null, lobbyCol = null, lobbyStatus = '', resultsD = null, resultsCol = null;
+  let countingDown = false, hostPuzzle = null, startWhenReady = false, lastSentProgress = -1, lastProgAt = 0, progTimer = 0;
+  let lastLocalEdit = 0, round = 0, syncTimer = 0, countTimer = 0, roomCode = opts.code || '';
+  const progress = new Map(), finished = new Map(); // finished: player -> [ms, hints, place]
   const hintsOff = () => store.noHints && mode !== 'tutorial';
 
   // Layout.
@@ -436,7 +531,8 @@ function showGame(opts) {
   const redoBtn = button('Redo', () => { game && game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
   const penBtn = button('Pen: Fence', () => { board.crossPen = !board.crossPen; refresh(); }, { size: 16 });
   const bar = el('div', { class: 'row bottombar' }, undoBtn, redoBtn, penBtn);
-  const root = el('div', { class: 'game' }, top, appLink, note, boardFrame, bar);
+  const playersText = el('div', { class: 'players', hidden: true });
+  const root = el('div', { class: 'game' }, top, playersText, appLink, note, boardFrame, bar);
 
   const board = new BoardView(canvas);
   if (window.__fenceline) window.__fenceline.board = board;
@@ -458,7 +554,7 @@ function showGame(opts) {
   // Timer and saving.
   const bankTime = () => {
     const now = performance.now();
-    if (game && !game.isSolved() && resumedAt > 0 && document.visibilityState === 'visible') game.elapsedMs += Math.max(0, now - resumedAt);
+    if (game && !game.isSolved() && resumedAt > 0 && !countingDown && document.visibilityState === 'visible') game.elapsedMs += Math.max(0, now - resumedAt);
     resumedAt = now;
   };
   const updateTimer = () => { if (!game) return; bankTime(); timerText.textContent = formatTime(game.elapsedMs); };
@@ -467,6 +563,7 @@ function showGame(opts) {
     if (!game) return;
     bankTime();
     game.elapsedMs = Math.round(game.elapsedMs);
+    if (mode === 'mp') return;
     if (game.isSolved()) {
       const s = store.savedGame;
       if (s && s.startsWith(game.puzzle.encode(true))) store.savedGame = null;
@@ -492,6 +589,7 @@ function showGame(opts) {
     redoBtn.classList.toggle('dim', !game.canRedo);
     setLabel(penBtn, board.crossPen ? 'Pen: X' : 'Pen: Fence');
     board.invalidate();
+    if (mode === 'mp') sendProgress(game);
     if (game.isSolved() && !winShown) onSolved(false);
   };
 
@@ -508,6 +606,7 @@ function showGame(opts) {
     let head;
     if (mode === 'daily') head = 'Daily · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     else if (mode === 'tutorial') head = `Lesson ${step + 1}/${Tutorial.steps.length} · ${Tutorial.steps[step].title}`;
+    else if (mode === 'mp') head = (mpMode === Mode.COOP ? 'Co-op · ' : 'Versus · ') + `${Boards.label(p.shape, p.width, p.height)} ${diffLabel(p.difficulty)}`;
     else head = `${Boards.label(p.shape, p.width, p.height)} · ${diffLabel(p.difficulty)}`;
     const code = mode === 'tutorial' ? null : PuzzleCode.of(p);
     title.replaceChildren(el('div', { class: 'head', text: head }), code ? el('div', { class: 'code', text: code.toString() }) : '');
@@ -669,13 +768,14 @@ function showGame(opts) {
     let d;
     d = dialog(el('div', { class: 'col' },
       text('Reset puzzle?', { size: 24, bold: true }),
-      text('This clears all your marks. The timer keeps going.', { size: 16, color: 'inkSoft' }),
+      text(shared() ? "This clears everyone's lines on the shared board." : 'This clears all your marks. The timer keeps going.', { size: 16, color: 'inkSoft' }),
       el('div', { class: 'row gap14' },
         button('Cancel', () => d.close(), { size: 17 }),
         button('Reset', () => {
           d.close();
           if (game) game.reset();
           board.clearHighlights(); pendingFix = null;
+          if (shared() && coop) coop.syncAll(); // host also sends the whole board, so everyone lands on the same blank board
           if (mode !== 'tutorial') setNote(''); else { guideAt = 0; startGuide(game); }
           refresh(); save();
         }, { size: 17, accent: 'error' })),
@@ -690,7 +790,9 @@ function showGame(opts) {
     g.elapsedMs = Math.round(g.elapsedMs);
     if (!alreadyDone) board.playSolved();
     const code = PuzzleCode.of(g.puzzle);
-    if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, mode === 'daily' ? 'daily' : '');
+    const kind = mode === 'daily' ? 'daily' : mode !== 'mp' ? '' : mpMode === Mode.COOP ? 'coop' : 'versus';
+    if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind);
+    if (mode === 'mp') { if (!alreadyDone) board.buzz(40); mpSolved(g); return; }
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
     const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, mode === 'daily') : false;
@@ -730,6 +832,396 @@ function showGame(opts) {
     d = dialog(el('div', { class: 'col' }, ...kids));
   };
 
+
+  // ---- play together (online) ----------------------------------------------
+
+  const shared = () => mode === 'mp' && mpMode === Mode.COOP && !!room;
+  // "X left, Y hosts now" stays readable while people reconnect right after it.
+  let hostNote = '', hostNoteAt = -1e9;
+  const moveNote = t => { hostNote = t; hostNoteAt = performance.now(); setNote(t); };
+  const laterNote = t => setNote(performance.now() - hostNoteAt < 6000 ? `${hostNote} ${t}` : t);
+  const isHost = () => !!(room && room.isHost);
+  const nameOf = p => (room && p === room.me) ? 'You' : (room && room.names[p]) || 'Friend';
+  const colorOf = p => pencilColor(room ? (room.pencils[p] || 0) : 0, theme.night);
+  const boardLabelOf = (sh, w, h, d) => `${Boards.label(sh, w, h)} ${diffLabel(d)}`;
+  const dotLine = (p, label) => el('span', { class: 'pl' }, el('span', { class: 'dot', style: { color: colorOf(p) }, text: '● ' }), label);
+
+  const linkUi = {
+    onLobby(r) {
+      if (!r.isHost && r.me >= 0 && lobbyStatus === 'Asking to join…') lobbyStatus = '';
+      fillLobby(); updatePlayers();
+    },
+    onMessage(r, msg) {
+      switch (msg.t) {
+        case 'START': if (!r.isHost) {
+          mpMode = msg.mode;
+          let p;
+          try { p = parsePuzzleText(msg.puzzle); } catch (e) { console.error(e); return; }
+          // Rejoining the round we were already in: keep our board (and versus time).
+          const same = game && mode === 'mp' && round === msg.round && game.puzzle.encode(true) === p.encode(true);
+          round = msg.round;
+          startRound(p, same);
+        } break;
+        case 'PING': board.showPing(msg.vertex, colorOf(msg.player)); setNote(`${nameOf(msg.player)} says: look here!`); break;
+        case 'PROG': progress.set(msg.player, msg.fraction); updatePlayers(); fillResults(); break;
+        case 'DONE':
+          finished.set(msg.player, [msg.ms, msg.hints, msg.place]);
+          progress.set(msg.player, 1);
+          updatePlayers();
+          if (!resultsD) showResults(); else fillResults();
+          break;
+        case 'MARK': case 'STATE':
+          // Skip a full sync that may predate our own very latest edit; the next one catches up.
+          if (msg.t === 'STATE' && performance.now() - lastLocalEdit < 1500) return;
+          if (coop && coop.apply(msg)) { board.invalidate(); refresh(); }
+          break;
+        case 'REMATCH': {
+          const roundOver = (game && game.isSolved()) || finished.size > 0;
+          if (r.isHost && roundOver) launchRound();
+          else if (!r.isHost) setNote(`${nameOf(msg.player)} wants another round!`);
+          break;
+        }
+      }
+    },
+    onPlayerLeft(r, player) {
+      if (game) setNote(`${nameOf(player)} dropped out. They can join again.`);
+      progress.delete(player);
+      updatePlayers(); fillResults();
+    },
+    onHostLost() {
+      const had = !!room && room.me >= 0;
+      if (link) link.close();
+      link = null; room = null;
+      if (!game) { lobbyStatus = had ? 'Lost the connection.' : lobbyStatus || 'Lost the connection.'; fillLobby(); return; }
+      updatePlayers();
+      lostDialog();
+    },
+    onHostMoving(r, from, to) {
+      const msg = `${r.names[from] || 'The host'} left. ${r.names[to] || 'A friend'} is hosting now…`;
+      if (game && mode === 'mp') moveNote(msg); else { lobbyStatus = msg; fillLobby(); }
+      updatePlayers();
+    },
+    onBecameHost(r, from) {
+      loadSetup(r.setup);
+      const msg = `${r.names[from] || 'The host'} left. You're hosting now.`;
+      if (game && mode === 'mp') moveNote(msg); else lobbyStatus = msg;
+      prepareNextPuzzle();
+      if (coop) scheduleSync();
+      fillLobby(); fillResults(); updatePlayers();
+    },
+    onJoinRequest(r, peer, name, returning) { askToJoin(r, peer, name, returning); },
+    onJoined(r, player, returning) {
+      laterNote(`${nameOf(player)} ${returning ? 'is back' : 'joined'}!`);
+      if (mpMode === Mode.COOP && coop) coop.syncAll(); // catch them up on the shared board
+      updatePlayers(); fillResults();
+    },
+    onDenied() { lobbyStatus = 'The host said not now.'; fillLobby(); },
+    onError(t) { lobbyStatus = t; fillLobby(); if (!lobbyD) setNote(t); },
+    onStatus(t) {
+      if (game && mode === 'mp') { if (t) laterNote(t); }
+      else { lobbyStatus = t; fillLobby(); }
+    },
+  };
+
+  const parsePuzzleText = t => roomParse(t);
+
+  const setupText = () => `${mpMode}|${mpShape.name}|${mpW}|${mpH}|${mpDiff}`;
+  /** A new host carries on with the first host's settings (for the next puzzle). */
+  const loadSetup = setup => {
+    const f = String(setup || '').split('|');
+    if (f.length < 5) return;
+    if (!game || mode !== 'mp') mpMode = f[0] === Mode.COOP ? Mode.COOP : Mode.VERSUS;
+    mpShape = Shape.entries.find(x => x.name === f[1]) || mpShape;
+    mpW = parseInt(f[2], 10) || mpW;
+    mpH = parseInt(f[3], 10) || mpH;
+    if (['EASY', 'MEDIUM', 'HARD'].includes(f[4])) mpDiff = f[4];
+  };
+
+  const startMultiplayer = async () => {
+    mode = 'mp';
+    title.replaceChildren(el('div', { class: 'head', text: 'Play together' }));
+    loading.textContent = '';
+    showLoading();
+    openLink(opts.role === 'join' ? 'join' : 'host');
+  };
+
+  const openLink = async role => {
+    link = new Link();
+    link.ui = linkUi;
+    lobbyStatus = role === 'host' ? 'Making a room…' : `Looking for room ${roomCode.toUpperCase()}…`;
+    showLobby();
+    const myLink = link;
+    try {
+      if (role === 'host') {
+        prepareNextPuzzle();
+        room = await link.host(store.playerName || 'Host', store.pencil, store.installId);
+        if (disposed || link !== myLink) { myLink.close(); return; }
+        room.setup = setupText();
+        roomCode = room.roomId;
+        lobbyStatus = 'Send your friends the code.';
+      } else {
+        room = await link.join(roomCode, store.playerName || '', store.pencil, store.installId);
+        if (disposed || link !== myLink) { myLink.close(); return; }
+        lobbyStatus = 'Asking to join…';
+      }
+    } catch (e) {
+      if (disposed || link !== myLink) return;
+      lobbyStatus = (e && e.message) || 'Something went wrong. Try again.';
+      try { link.close(); } catch (_) { /* ignore */ }
+      link = null; room = null;
+    }
+    fillLobby();
+    updatePlayers();
+  };
+
+  /** Guest who lost the host: look for the game again. The host lets you back into your old seat. */
+  const rejoin = () => { openLink('join'); };
+
+  /** Host: start building the next puzzle now so Start (or Rematch) is quick, even on big boards. */
+  const prepareNextPuzzle = () => {
+    hostPuzzle = null;
+    const want = setupText();
+    factory.request(mpW, mpH, mpDiff, PuzzleCode.randomSeed(), mpShape).then(p => {
+      if (disposed || want !== setupText()) return;
+      hostPuzzle = p;
+      if (startWhenReady) launchRound();
+    }, err => { console.error(err); lobbyStatus = "Oops, that puzzle wouldn't draw."; fillLobby(); });
+  };
+
+  const showLobby = () => {
+    if (lobbyD) { fillLobby(); return; }
+    lobbyCol = el('div', { class: 'col' });
+    lobbyD = dialog(lobbyCol, { cancelable: false });
+    fillLobby();
+  };
+
+  const shareInvite = () => {
+    const c = (room ? room.roomId : roomCode).toUpperCase();
+    shareText(`Join my Fenceline game!\n${JOIN_BASE}${c}\nRoom code: ${c}`, t => { lobbyStatus = t; fillLobby(); });
+  };
+
+  const fillLobby = () => {
+    const col = lobbyCol;
+    if (!col) return;
+    const r = room;
+    const kids = [];
+    if (!r || (!r.isHost && r.me < 0)) {
+      kids.push(text(opts.role === 'host' && !r ? 'Making a room…' : 'Joining…', { size: 24, bold: true }));
+      if (roomCode) kids.push(text(`Room ${roomCode.toUpperCase()}`, { size: 15, color: 'inkSoft' }));
+    } else {
+      const ready = r.here.length >= 2;
+      kids.push(text(r.isHost ? (ready ? 'Ready when you are!' : 'Waiting for friends…') : "You're in!", { size: 24, bold: true }));
+      let setup = r.isHost ? null : r.setup.split('|');
+      const label = r.isHost ? `${mpMode === Mode.COOP ? 'Co-op' : 'Versus'} · ${boardLabelOf(mpShape, mpW, mpH, mpDiff)}`
+        : setup && setup.length >= 5 ? `${setup[0] === Mode.COOP ? 'Co-op' : 'Versus'} · ${boardLabelOf(Shape.entries.find(x => x.name === setup[1]) || Shape.SQUARE, setup[2], setup[3], setup[4])}` : '';
+      if (label) kids.push(text(label, { size: 15, color: 'inkSoft' }));
+      if (r.isHost) {
+        kids.push(el('div', { class: 'roomcode' }, el('div', { class: 'lbl2', text: 'Room code' }), el('div', { class: 'big', text: r.roomId.toUpperCase() })));
+        kids.push(button('Share invite', shareInvite, { size: 16 }));
+      }
+      kids.push(el('div', { class: 'plist' }, ...r.players.map(p => dotLine(p, (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
+      if (r.isHost) {
+        const b = button('Start', () => { if (r.here.length >= 2) launchRound(); }, { size: 18, accent: 'accent' });
+        b.classList.toggle('dim', !ready);
+        kids.push(el('div', { class: 'gap8' }, b));
+      } else kids.push(text('The host starts the game.', { size: 15, color: 'inkSoft' }));
+    }
+    if (lobbyStatus) kids.push(text(lobbyStatus, { size: 15, color: 'inkSoft' }));
+    if (!room && opts.role === 'join' && link == null) kids.push(button('Try again', () => openLink('join'), { size: 16, accent: 'accent' }));
+    kids.push(button('Cancel', () => leaveGame(), { size: 16 }));
+    col.replaceChildren(...kids);
+  };
+
+  /** Host: start a round with the prepared puzzle (or as soon as it's ready). */
+  const launchRound = () => {
+    const r = room;
+    if (!r || !r.isHost) return;
+    const p = hostPuzzle;
+    if (!p) {
+      startWhenReady = true;
+      lobbyStatus = 'Sketching the puzzle…'; fillLobby();
+      setNote('Sketching the next puzzle…');
+      return;
+    }
+    startWhenReady = false;
+    r.start(mpMode, p);
+    startRound(p, false);
+    prepareNextPuzzle();
+  };
+
+  const startRound = (p, keep) => {
+    const r = room;
+    if (!r || disposed) return;
+    if (r.isHost) round = r.round;
+    if (lobbyD) { lobbyD.close(); lobbyD = null; lobbyCol = null; }
+    if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
+    if (coop) { coop.detach(); coop = null; }
+    progress.clear(); finished.clear(); lastSentProgress = -1;
+    const g = keep ? game : new Game(p);
+    g.localPlayer = Math.max(0, r.me);
+    if (mpMode === Mode.COOP) {
+      coop = new CoopBoard(g, r);
+      const send = g.onLocalChange;
+      g.onLocalChange = (e, v, h) => { lastLocalEdit = performance.now(); if (send) send(e, v, h); };
+      board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i));
+      board.onPing = v => { board.showPing(v, colorOf(r.me)); if (room) room.broadcast({ t: 'PING', player: room.me, vertex: v }); };
+    } else {
+      board.ownerColors = null;
+      board.onPing = null;
+    }
+    mode = 'mp';
+    if (!keep) start(g); else { board.invalidate(); laterNote("You're back in!"); }
+    playersText.hidden = false;
+    updatePlayers();
+    clearTimeout(syncTimer);
+    // Versus: everyone (and anyone joining late) gets a 3-2-1; your own time starts after it.
+    if (mpMode === Mode.VERSUS) { if (!keep) countdown(3); else refresh(); }
+    else if (r.isHost) scheduleSync();
+  };
+
+  /** Co-op host: send the whole board every few seconds, so everyone stays in step. */
+  const scheduleSync = () => {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(function tick() {
+      if (!coop || !isHost() || disposed) return;
+      if (!(game && game.isSolved())) coop.syncAll();
+      syncTimer = setTimeout(tick, 3000);
+    }, 3000);
+  };
+
+  const countdown = n => {
+    countingDown = true;
+    board.locked = true;
+    loading.hidden = false;
+    loading.classList.add('count');
+    loading.textContent = n > 0 ? String(n) : 'Go!';
+    clearTimeout(countTimer);
+    if (n > 0) { countTimer = setTimeout(() => countdown(n - 1), 900); return; }
+    countTimer = setTimeout(() => {
+      loading.hidden = true;
+      loading.classList.remove('count');
+      countingDown = false;
+      board.locked = false;
+      resumedAt = performance.now();
+      if (game) game.elapsedMs = 0;
+    }, 500);
+  };
+
+  const sendProgress = g => {
+    const r = room;
+    if (!r || mpMode !== Mode.VERSUS || r.me < 0) return;
+    const p = g.progress();
+    if (Math.abs(p - lastSentProgress) < 0.01) return;
+    progress.set(r.me, p);
+    updatePlayers();
+    // At most a few updates a second; the last one always goes out.
+    const now = performance.now();
+    const send = () => { progTimer = 0; lastProgAt = performance.now(); lastSentProgress = p; if (room) room.broadcast({ t: 'PROG', player: room.me, fraction: Math.round(p * 1000) / 1000 }); };
+    clearTimeout(progTimer);
+    if (now - lastProgAt > 300 || p >= 1) send(); else progTimer = setTimeout(() => sendProgress(game), 300 - (now - lastProgAt));
+  };
+
+  const updatePlayers = () => {
+    const r = room;
+    if (mode !== 'mp') return;
+    if (!r) { playersText.replaceChildren('Playing solo'); return; }
+    if (mpMode === Mode.COOP) board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i)); // late joiners too
+    const many = r.players.length > 4;
+    playersText.replaceChildren(...r.players.map(p => {
+      const label = nameOf(p).slice(0, many ? 8 : 12) + (r.away[p] ? ' (away)' : '');
+      return dotLine(p, mpMode === Mode.VERSUS ? `${label} ${Math.floor((progress.get(p) || 0) * 100)}%` : label);
+    }));
+  };
+
+  const mpSolved = g => {
+    const r = room;
+    if (mpMode === Mode.VERSUS) {
+      if (r && r.me >= 0) {
+        const d = r.finish(g.elapsedMs, g.hintsUsed);
+        const prev = finished.get(r.me);
+        finished.set(r.me, [g.elapsedMs, g.hintsUsed, d ? d.place : (prev ? prev[2] : 0)]);
+        progress.set(r.me, 1);
+      }
+      updatePlayers();
+      setTimeout(() => { if (disposed) return; if (!resultsD) showResults(); else fillResults(); }, 1300);
+    } else {
+      setTimeout(() => { if (!disposed) showResults(); }, 1300);
+    }
+  };
+
+  const showResults = () => {
+    if (disposed) return;
+    if (resultsD) resultsD.close();
+    resultsCol = el('div', { class: 'col' });
+    resultsD = dialog(resultsCol, { cancelable: false });
+    fillResults();
+  };
+
+  const fillResults = () => {
+    const col = resultsCol, g = game;
+    if (!col || !g) return;
+    const r = room;
+    const players = r ? r.players : [];
+    const kids = [];
+    if (mpMode === Mode.COOP) {
+      kids.push(text('Solved together!', { size: 30, bold: true, color: 'accent', cls: 'center' }));
+      const hints = g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`;
+      kids.push(text(`Time ${formatTime(g.elapsedMs)} · ${hints}`, { size: 18, cls: 'center' }));
+      kids.push(el('div', { class: 'plist center' }, ...players.map(p => {
+        let n = 0; for (let e = 0; e < g.grid.edgeCount; e++) if (g.marks[e] === Edge.LINE && g.owner[e] === p) n++;
+        return dotLine(p, `${nameOf(p)}: ${n} piece${n === 1 ? '' : 's'}`);
+      })));
+    } else {
+      // The host numbers finishes as they arrive, so the first loop in real time wins (late joiners too).
+      let winner = null;
+      for (const [p, f] of finished) if (f[2] === 1) { winner = p; break; }
+      const head = winner == null ? 'Race on!' : (r && winner === r.me) ? 'You win!' : `${nameOf(winner)} wins!`;
+      const h = text(head, { size: 30, bold: true, cls: 'center' });
+      h.style.color = winner != null ? colorOf(winner) : theme.accent;
+      kids.push(h);
+      const rank = p => { const f = finished.get(p); return f ? (f[2] > 0 ? f[2] : 99) : 100; };
+      const order = players.slice().sort((a, b) => rank(a) - rank(b) || (progress.get(b) || 0) - (progress.get(a) || 0));
+      kids.push(el('div', { class: 'plist' }, ...order.map(p => {
+        const f = finished.get(p);
+        const line = f ? `${nameOf(p)}: ${formatTime(f[0])} · ` + (f[1] === 0 ? 'no hints' : `${f[1]} hint${f[1] === 1 ? '' : 's'}`)
+          : `${nameOf(p)}: still drawing (${Math.floor((progress.get(p) || 0) * 100)}%)`;
+        return dotLine(p, line);
+      })));
+      if (!g.isSolved()) kids.push(button('Keep drawing', () => { if (resultsD) resultsD.close(); resultsD = null; resultsCol = null; }, { size: 17 }));
+    }
+    if (r) {
+      kids.push(button(mpMode === Mode.COOP ? 'Play again' : 'Rematch', () => {
+        if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); setNote('Asked the host for another round…'); }
+      }, { size: 18, accent: 'accent' }));
+    }
+    kids.push(button('Leave', () => leaveGame(), { size: 16 }));
+    col.replaceChildren(...kids);
+  };
+
+  /** Host: someone wants into the running game. */
+  const askToJoin = (r, peer, name, returning) => {
+    let d;
+    d = dialog(el('div', { class: 'col' },
+      text(returning ? `${name} is back!` : `${name} wants to join`, { size: 22, bold: true }),
+      text(returning ? 'Let them back into their seat?' : 'Let them into this game?', { size: 16, color: 'inkSoft' }),
+      el('div', { class: 'row gap14' },
+        button('Not now', () => { d.close(); r.deny(peer); }, { size: 17 }),
+        button('Let in', () => { d.close(); r.approve(peer); }, { size: 17, accent: 'accent' })),
+    ), { cancelable: false });
+  };
+
+  /** Guest: the host's phone went away. */
+  const lostDialog = () => {
+    let d;
+    d = dialog(el('div', { class: 'col' },
+      text('Lost the connection', { size: 22, bold: true }),
+      text('Rejoin to get your seat back, or keep drawing on your own.', { size: 16, color: 'inkSoft' }),
+      el('div', { class: 'row gap14' },
+        button('Keep drawing', () => { d.close(); setNote('Playing solo.'); updatePlayers(); }, { size: 16 }),
+        button('Rejoin', () => { d.close(); rejoin(); }, { size: 17, accent: 'accent' })),
+    ));
+  };
+
   setScreen('game', root, () => {
     disposed = true;
     save();
@@ -737,6 +1229,10 @@ function showGame(opts) {
     document.removeEventListener('visibilitychange', onVis);
     window.removeEventListener('pagehide', save);
     onThemeChange.delete(onTheme);
+    clearTimeout(syncTimer); clearTimeout(countTimer); clearTimeout(progTimer);
+    if (coop) coop.detach();
+    if (link) link.close();
+    link = null; room = null;
     board.destroy();
     keepAwake(false);
   });
@@ -757,6 +1253,8 @@ function showGame(opts) {
     factory.request(10, 10, 'MEDIUM', dailySeed(new Date()), Shape.SQUARE).then(p => start(new Game(p)), err => { loading.textContent = "Oops, today's puzzle wouldn't draw."; console.error(err); });
   } else if (mode === 'tutorial') {
     startTutorial(step);
+  } else if (mode === 'mp') {
+    startMultiplayer();
   } else if (mode === 'code') {
     const code = PuzzleCode.find(opts.code || '');
     if (!code) { showMenu(); return; }
@@ -779,8 +1277,9 @@ function boot() {
   document.addEventListener('gesturestart', e => e.preventDefault());
   const params = new URLSearchParams(location.search);
   const raw = (params.get('p') || params.get('code') || '').replace(/\s+/g, '');
+  const joinCode = cleanCode(params.get('join') || '');
   const code = raw ? PuzzleCode.find(raw) : null;
-  if (raw) {
+  if (raw || params.has('join')) {
     // Keep the address clean, so a reload or a home-screen launch opens the menu.
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
   }
@@ -790,6 +1289,9 @@ function boot() {
     document.title = 'Fenceline puzzle ' + code;
     openGame({ mode: 'code', code: code.toString() });
     setTimeout(() => { document.title = 'Fenceline'; }, 4000);
+  } else if (joinCode) {
+    store.seenIntro = true;
+    joinDialog(joinCode.toUpperCase());
   } else if (!store.seenIntro) {
     store.seenIntro = true;
     openGame({ mode: 'tutorial', step: 0 });

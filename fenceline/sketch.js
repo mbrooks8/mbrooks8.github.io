@@ -20,8 +20,16 @@ export const NIGHT = {
 };
 
 export function pencilColor(index, night) {
-  const i = Math.max(0, Math.min(PENCILS.length - 1, index | 0));
+  if ((index | 0) >= PENCILS.length) return extraPencil((index | 0) - PENCILS.length, night);
+  const i = Math.max(0, index | 0);
   return night ? PENCILS_NIGHT[i] : PENCILS[i][1];
+}
+
+/** Extra pencil colours for big groups: hues spread by the golden angle, in the same soft tone (as on Android). */
+function extraPencil(k, night) {
+  const h = (25 + 137.5 * (k + 1)) % 360, s = night ? 0.38 : 0.55, v = night ? 0.88 : 0.62;
+  const f = n => { const kk = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(kk, 4 - kk, 1)); };
+  return '#' + [f(5), f(3), f(1)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
 }
 
 /** Small seeded random numbers, so a stroke looks the same on every frame. */

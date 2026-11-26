@@ -22,6 +22,11 @@ export class BoardView {
     this.guideEdges = new Set();
     this.onlyGuided = false;
     this.onOffGuide = null;
+    /** Co-op: pencil colour per player id; fences are drawn in their owner's colour. */
+    this.ownerColors = null;
+    /** Co-op: long-pressing a dot calls this ("look here") instead of placing an X. */
+    this.onPing = null;
+    this.pings = [];
     this.scale = 1; this.fitScale = 1; this.offX = 0; this.offY = 0;
     this.w = 0; this.h = 0; this.dpr = 1;
     this.hintEdge = -1; this.hintCell = -1; this.hintVertex = -1; this.hintOn = false;
@@ -64,6 +69,13 @@ export class BoardView {
     this.scale = this.fitScale;
     this.offX = this.w / 2 - (g.minX + g.maxX) / 2 * this.scale;
     this.offY = this.h / 2 - (g.minY + g.maxY) / 2 * this.scale;
+    this.invalidate();
+  }
+
+  /** Flashes a few growing rings at [vertex] in [color] for a couple of seconds. */
+  showPing(vertex, color) {
+    this.pings = this.pings.filter(p => p.vertex !== vertex);
+    this.pings.push({ vertex, color, start: performance.now() });
     this.invalidate();
   }
 
@@ -197,9 +209,29 @@ export class BoardView {
       } else {
         const len = Math.max(1, Math.hypot(x1 - x0, y1 - y0));
         const ix = (x1 - x0) / len * unit * 0.04, iy = (y1 - y0) / len * unit * 0.04;
-        const col = gm.hinted[e] ? blend(this.pencilColor, pal.hint, 0.45) : this.pencilColor;
+        const base = (this.ownerColors && gm.owner && this.ownerColors[gm.owner[e]]) || this.pencilColor;
+        const col = gm.hinted[e] ? blend(base, pal.hint, 0.45) : base;
         pencilLine(ctx, x0 + ix, y0 + iy, x1 - ix, y1 - iy, col, lineW, e * 7919 + 3);
       }
+    }
+
+    // Pings ("look here"): three rings growing out from the dot.
+    if (this.pings.length) {
+      const now = performance.now();
+      this.pings = this.pings.filter(p => now - p.start <= PING_MS);
+      for (const pm of this.pings) {
+        const t = (now - pm.start) / PING_MS;
+        for (let k = 0; k <= 2; k++) {
+          const r = (t * 3 + k / 3) % 1;
+          ctx.save();
+          ctx.strokeStyle = pm.color;
+          ctx.globalAlpha = Math.max(0, Math.min(1, (1 - r) * (230 / 255) * (1 - t * 0.5)));
+          ctx.lineWidth = lineW * 0.6;
+          ctx.beginPath(); ctx.arc(this.sx(g, pm.vertex), this.sy(g, pm.vertex), unit * (0.15 + r * 0.6), 0, 6.2832); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      if (this.pings.length) animate = true;
     }
 
     // Dots.
@@ -270,6 +302,18 @@ export class BoardView {
     return best;
   }
 
+  vertexNear(x, y, radius) {
+    const g = this.game && this.game.grid;
+    if (!g) return -1;
+    const bx = (x - this.offX) / this.scale, by = (y - this.offY) / this.scale;
+    let best = -1, bestD = radius * g.edgeLength;
+    for (let v = 0; v < g.vertexCount; v++) {
+      const d = Math.hypot(bx - g.vx[v], by - g.vy[v]);
+      if (d < bestD) { bestD = d; best = v; }
+    }
+    return best;
+  }
+
   buzz(ms = 8) { if (this.haptics && navigator.vibrate) try { navigator.vibrate(ms); } catch (e) { /* ignore */ } }
 
   clampPan() {
@@ -296,6 +340,10 @@ export class BoardView {
   tapEdge(x, y, long) {
     const gm = this.game;
     if (!gm || this.locked) return;
+    if (long && this.onPing) {
+      const v = this.vertexNear(x, y, 0.3);
+      if (v >= 0) { this.onPing(v); this.buzz(25); return; }
+    }
     const edge = this.edgeAt(x, y);
     if (edge < 0) return;
     if (this.onlyGuided && !this.guideEdges.has(edge)) { this.onOffGuide && this.onOffGuide(); return; }
