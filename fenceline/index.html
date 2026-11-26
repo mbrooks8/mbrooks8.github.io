@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Fenceline</title>
+<meta name="description" content="A cozy loop-fence puzzle game.">
+<style>
+  :root {
+    --paper:#F5EDDC; --shade:#EDE2CC; --card:#FBF6EA; --ink:#4A4641; --soft:#9A8F80;
+    --accent:#3F6E9C; --hint:#E0A030; --done:#6A9A5B; --ruling:rgba(91,136,181,.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#2A2520; --shade:#332D27; --card:#35302A; --ink:#E8DFD0; --soft:#9C9283;
+      --accent:#8FB4DA; --hint:#F2C45A; --done:#8FBF82; --ruling:rgba(63,110,156,.18);
+    }
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body {
+    min-height:100vh; background-color:var(--paper); color:var(--ink);
+    background-image:repeating-linear-gradient(to bottom, transparent 0 31px, var(--ruling) 31px 32px);
+    font:18px/1.5 "Segoe Print","Bradley Hand","Chalkboard SE","Comic Sans MS",system-ui,sans-serif;
+    display:flex; justify-content:center; padding:32px 16px;
+  }
+  main { width:100%; max-width:440px; }
+  h1 { font-size:46px; margin:0 0 4px; color:var(--accent); letter-spacing:.5px; }
+  .tag { color:var(--soft); margin:0 0 24px; }
+  .card {
+    background:var(--card); border:2.4px solid var(--ink); border-radius:18px 14px 20px 12px;
+    padding:20px; margin-bottom:18px; box-shadow:3px 4px 0 var(--shade);
+  }
+  .label { color:var(--soft); font-size:15px; margin:0 0 6px; }
+  .code {
+    font:700 clamp(22px, 7.5vw, 32px)/1.2 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    letter-spacing:1px; word-break:break-all; margin:0 0 14px; user-select:all;
+  }
+  .btn {
+    display:block; width:100%; text-align:center; text-decoration:none; cursor:pointer;
+    font:inherit; font-size:19px; color:var(--ink); background:var(--paper);
+    border:2px solid var(--ink); border-radius:14px 10px 16px 9px; padding:12px 14px; margin-top:10px;
+  }
+  .btn.main { background:var(--accent); border-color:var(--accent); color:var(--card); font-weight:700; }
+  .btn:active { transform:translateY(1px); }
+  .small { font-size:15px; color:var(--soft); margin:10px 0 0; }
+  a { color:var(--accent); }
+  #get:target { outline:3px dashed var(--hint); outline-offset:4px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fenceline</h1>
+  <p class="tag">Draw one loop. Mind the numbers.</p>
+
+  <section class="card" id="puzzle" hidden>
+    <p class="label">Someone sent you a puzzle!</p>
+    <p class="code" id="code"></p>
+    <a class="btn main" id="open" href="#">Open in Fenceline</a>
+    <button class="btn" id="copy" type="button">Copy code</button>
+    <p class="small">No app? Copy the code, then tap “Enter a code” in Fenceline.</p>
+  </section>
+
+  <section class="card" id="welcome" hidden>
+    <p style="margin:0">A cozy pencil-and-paper loop puzzle. Squares, hexagons and more, plus a daily puzzle.</p>
+    <p class="small">Got a puzzle link from a friend? Tap it and it opens right here.</p>
+  </section>
+
+  <section class="card" id="get">
+    <p class="label">Get the app</p>
+    <a class="btn" href="/fenceline/Fenceline.apk" download>Download for Android</a>
+    <p class="small">After it installs, come back and tap your link again.</p>
+  </section>
+</main>
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var raw = (params.get("p") || "").replace(/\s+/g, "");
+    var m = raw.match(/F1-[HTC]?\d{1,2}[x×]\d{1,2}[EMH]-[0-9A-Z]{1,13}/i);
+    if (!m) { document.getElementById("welcome").hidden = false; return; }
+    var code = m[0].toUpperCase().replace("×", "X").replace(/(\d)X(\d)/, "$1x$2");
+    document.title = "Fenceline puzzle " + code;
+    document.getElementById("puzzle").hidden = false;
+    document.getElementById("code").textContent = code;
+
+    var open = document.getElementById("open");
+    if (/Android/i.test(navigator.userAgent)) {
+      var fallback = location.origin + "/fenceline/?p=" + encodeURIComponent(code) + "#get";
+      open.href = "intent://p/" + encodeURIComponent(code) +
+        "#Intent;scheme=fenceline;package=com.fenceline.app;S.browser_fallback_url=" +
+        encodeURIComponent(fallback) + ";end";
+    } else {
+      open.href = "fenceline://p/" + encodeURIComponent(code);
+    }
+
+    var copy = document.getElementById("copy");
+    copy.addEventListener("click", function () {
+      function done() { copy.textContent = "Copied!"; setTimeout(function () { copy.textContent = "Copy code"; }, 1600); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(done, legacy);
+      } else legacy();
+      function legacy() {
+        var t = document.createElement("textarea");
+        t.value = code; t.style.position = "fixed"; t.style.opacity = "0";
+        document.body.appendChild(t); t.select();
+        try { document.execCommand("copy"); done(); } catch (e) {}
+        document.body.removeChild(t);
+      }
+    });
+  })();
+</script>
+</body>
+</html>
