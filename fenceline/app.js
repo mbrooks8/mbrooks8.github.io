@@ -739,12 +739,6 @@ function showGame(opts) {
     return `Try ${what} Fenceline puzzle!${brag}\n${SHARE_BASE}${code}\nCode: ${code}`;
   };
   const sharePuzzle = timeMs => { const t = shareMsg(timeMs); if (t) shareText(t, setNote); };
-  const copyCode = async () => {
-    const code = game && PuzzleCode.of(game.puzzle);
-    if (!code) return;
-    const ok = await copy(code.toString());
-    setNote(ok ? `Copied ${code}` : `Code: ${code}`);
-  };
 
   const menuDialog = () => {
     let d;
@@ -764,7 +758,6 @@ function showGame(opts) {
     });
     if (mode !== 'tutorial' && game && PuzzleCode.of(game.puzzle)) {
       item('Share puzzle', () => sharePuzzle(null));
-      item('Copy code', copyCode);
     }
     item('Reset puzzle', confirmReset);
     if (mode === 'free') item('New puzzle', () => {
