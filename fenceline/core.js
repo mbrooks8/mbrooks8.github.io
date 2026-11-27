@@ -1320,6 +1320,7 @@ export class Game {
     this.beginStroke();
     for (const e of wrong) this.record(e, Edge.UNKNOWN);
     this.endStroke();
+    this.hintsUsed++; // fixing mistakes for you counts as a hint
     return wrong.length;
   }
 

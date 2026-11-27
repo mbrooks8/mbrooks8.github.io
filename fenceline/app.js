@@ -161,7 +161,7 @@ function rulesDialog() {
       el('li', { text: 'Squares without a number can have any count.' }),
       el('li', { text: 'Every dot has two fence pieces touching it, or none. So the fence never stops, splits or crosses.' }),
       el('li', { text: "There's only one fence, and it goes all the way around." })),
-    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty). Pinch to zoom, drag to move.', { size: 16 }),
+    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty), or switch the Pen to X. Pinch to zoom, drag to move.', { size: 16 }),
     el('div', { class: 'gap16' }, button('Got it', () => d.close())),
   );
   d = dialog(col);
@@ -532,11 +532,16 @@ function showGame(opts) {
   const boardFrame = el('div', { class: 'boardframe' }, canvas, loading);
   const undoBtn = button('Undo', () => { game && game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
   const redoBtn = button('Redo', () => { game && game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
-  const bar = el('div', { class: 'row bottombar' }, undoBtn, redoBtn);
+  const penBtn = button('Pen: Fence', () => { board.crossPen = !board.crossPen; refresh(); }, { size: 16 });
+  // Co-op: Ping, then tap the board to point everyone at that dot.
+  const pingBtn = button('Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap a dot to show everyone.'); }, { size: 16 });
+  pingBtn.hidden = true;
+  const bar = el('div', { class: 'row bottombar' }, undoBtn, redoBtn, penBtn, pingBtn);
   const playersText = el('div', { class: 'players', hidden: true });
   const root = el('div', { class: 'game' }, top, playersText, appLink, note, boardFrame, bar);
 
   const board = new BoardView(canvas);
+  board.onPingDone = () => { refresh(); setNote(''); };
   if (window.__fenceline) window.__fenceline.board = board;
   board.onChanged = () => { pendingFix = null; if (mode !== 'tutorial') setNote(''); advanceGuide(); refresh(); save(); };
   board.onOffGuide = () => { const s = guide[guideAt]; if (s) setNote('Try the glowing gap. ' + s.text); };
@@ -589,6 +594,9 @@ function showGame(opts) {
     if (!game) return;
     undoBtn.classList.toggle('dim', !game.canUndo);
     redoBtn.classList.toggle('dim', !game.canRedo);
+    setLabel(penBtn, board.crossPen ? 'Pen: X' : 'Pen: Fence');
+    pingBtn.hidden = !board.onPing;
+    pingBtn.classList.toggle('on', board.pingArmed);
     board.invalidate();
     if (mode === 'mp') sendProgress(game);
     if (game.isSolved() && !winShown) onSolved(false);
@@ -731,12 +739,6 @@ function showGame(opts) {
     return `Try ${what} Fenceline puzzle!${brag}\n${SHARE_BASE}${code}\nCode: ${code}`;
   };
   const sharePuzzle = timeMs => { const t = shareMsg(timeMs); if (t) shareText(t, setNote); };
-  const copyCode = async () => {
-    const code = game && PuzzleCode.of(game.puzzle);
-    if (!code) return;
-    const ok = await copy(code.toString());
-    setNote(ok ? `Copied ${code}` : `Code: ${code}`);
-  };
 
   const menuDialog = () => {
     let d;
@@ -756,7 +758,6 @@ function showGame(opts) {
     });
     if (mode !== 'tutorial' && game && PuzzleCode.of(game.puzzle)) {
       item('Share puzzle', () => sharePuzzle(null));
-      item('Copy code', copyCode);
     }
     item('Reset puzzle', confirmReset);
     if (mode === 'free') item('New puzzle', () => {
@@ -1104,6 +1105,7 @@ function showGame(opts) {
     } else {
       board.ownerColors = null;
       board.onPing = null;
+      board.pingArmed = false;
     }
     mode = 'mp';
     if (!keep) start(g); else { board.invalidate(); laterNote("You're back in!"); }
@@ -1229,9 +1231,48 @@ function showGame(opts) {
       kids.push(button(mpMode === Mode.COOP ? 'Play again' : 'Rematch', () => {
         if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); setNote('Asked the host for another round…'); }
       }, { size: 18, accent: 'accent' }));
+      if (r.isHost) kids.push(button('Change board', nextBoardDialog, { size: 16 }));
     }
     kids.push(button('Leave', () => leaveGame(), { size: 16 }));
     col.replaceChildren(...kids);
+  };
+
+  /** Host, after a round: pick the shape, size and difficulty of the next one, then start it. */
+  const nextBoardDialog = () => {
+    let d;
+    let shape = mpShape, size = `${mpW}x${mpH}`, diff = mpDiff;
+    const col = el('div', { class: 'col' });
+    const fill = () => {
+      const sizes = Boards.sizes(shape).concat(mpMode === Mode.COOP ? GROUP_SIZES[shape.name] || [] : []);
+      if (!sizes.includes(size)) size = Boards.defaultSize ? Boards.defaultSize(shape) : sizes[1];
+      const kids = [
+        text('Next board', { size: 26, bold: true }),
+        el('div', { class: 'row gap6' }, ...Shape.entries.map(sh => chip(sh.label, shape === sh, () => { shape = sh; fill(); }, { size: 13 }))),
+        text(`${shape.label} board`, { size: 15, color: 'inkSoft' }),
+      ];
+      for (let i = 0; i < sizes.length; i += 4) {
+        kids.push(el('div', { class: 'row gap6' }, ...sizes.slice(i, i + 4).map(s =>
+          chip(s.replace('x', '×'), size === s, () => { size = s; fill(); }))));
+      }
+      kids.push(el('div', { class: 'row gap6' }, ...['EASY', 'MEDIUM', 'HARD'].map(dd => chip(cap(dd), diff === dd, () => { diff = dd; fill(); }))));
+      kids.push(el('div', { class: 'row gap14' },
+        button('Back', () => d.close(), { size: 17 }),
+        button('Start', () => {
+          d.close();
+          const [w, h] = size.split('x').map(Number);
+          const changed = shape !== mpShape || w !== mpW || h !== mpH || diff !== mpDiff;
+          mpShape = shape; mpW = w; mpH = h; mpDiff = diff;
+          if (changed) {
+            if (room) room.setup = setupText();
+            prepareNextPuzzle();
+          }
+          if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
+          launchRound();
+        }, { size: 17, accent: 'accent' })));
+      col.replaceChildren(...kids);
+    };
+    fill();
+    d = dialog(col);
   };
 
   /** Host: someone wants into the running game. */

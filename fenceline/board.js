@@ -34,6 +34,9 @@ export class BoardView {
     this.solvedReveal = 0;
     this.revealStart = 0;
     this.frame = 0;
+    this.crossPen = false; // Pen: X, taps make X instead of fence
+    this.pingArmed = false; // co-op Ping button: the next tap points at the nearest dot
+    this.onPingDone = null;
     this.pointers = new Map();
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(canvas);
@@ -340,6 +343,13 @@ export class BoardView {
   tapEdge(x, y, long) {
     const gm = this.game;
     if (!gm || this.locked) return;
+    if (this.pingArmed && this.onPing) {
+      this.pingArmed = false;
+      const v = this.vertexNear(x, y, 1.5);
+      if (v >= 0) { this.onPing(v); this.buzz(25); }
+      if (this.onPingDone) this.onPingDone();
+      return;
+    }
     if (long && this.onPing) {
       const v = this.vertexNear(x, y, 0.3);
       if (v >= 0) { this.onPing(v); this.buzz(25); return; }
@@ -347,8 +357,8 @@ export class BoardView {
     const edge = this.edgeAt(x, y);
     if (edge < 0) return;
     if (this.onlyGuided && !this.guideEdges.has(edge)) { this.onOffGuide && this.onOffGuide(); return; }
-    // Tap draws a fence or clears the gap; long-press makes an X (or clears it).
-    if (long) gm.setMark(edge, gm.marks[edge] === Edge.CROSS ? Edge.UNKNOWN : Edge.CROSS);
+    // Tap draws a fence or clears the gap (with Pen: X, an X); long-press always makes an X (or clears it).
+    if (long || this.crossPen) gm.setMark(edge, gm.marks[edge] === Edge.CROSS ? Edge.UNKNOWN : Edge.CROSS);
     else gm.setMark(edge, gm.marks[edge] === Edge.UNKNOWN ? Edge.LINE : Edge.UNKNOWN);
     this.buzz(long ? 25 : 8);
     this.clearHighlights();
