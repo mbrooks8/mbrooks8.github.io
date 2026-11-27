@@ -1,4 +1,4 @@
-// Settings, stats, history and the saved game, kept in localStorage (a port of Store.kt).
+// Settings, stats, history and the saved game, kept in localStorage.
 // Every access is guarded: private windows and blocked storage just behave like a fresh install.
 import { Shape, Boards } from './core.js';
 

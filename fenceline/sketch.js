@@ -1,5 +1,5 @@
 // Coloured-pencil drawing on canvas: palette, paper, pencil strokes and hand-drawn boxes.
-// A port of the Android app's Sketch.kt.
+// (Ported from the 1.x Android app.)
 
 // Pencils chosen to stay tellable apart with colour blindness too (red-green and blue-yellow).
 export const PENCILS = [

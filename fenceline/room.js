@@ -185,10 +185,16 @@ export class Room {
     this.L('onLobby');
   }
 
-  returningSeat(hello) {
+  /** The seat this same device (same id) had, even if its old connection hasn't timed out yet, or -1. */
+  sameDeviceSeat(hello) {
     const id = (hello.id || '').slice(0, 24);
-    // The same device (same id) is coming back, even if its old connection hasn't timed out yet.
     if (id) for (let i = 0; i < SEATS; i++) if (i !== this.me && this.seatIds[i] === id) return i;
+    return -1;
+  }
+
+  returningSeat(hello) {
+    const dev = this.sameDeviceSeat(hello);
+    if (dev >= 0) return dev;
     // Same person on another browser or app (an iPhone link opens Safari, not the home-screen app):
     // give them back the seat of an away player with the same name.
     const nm = sameName(hello.name);
@@ -215,7 +221,9 @@ export class Room {
         if (this.pending.has(peer)) return;
         if (this.peerPlayer.has(peer)) { this.peerPlayer.delete(peer); this.seat(peer, msg); return; } // reconnected: catch it up again
         if (this.isFull) { this._send(peer, Msg.encode({ t: 'DENIED' })); return; }
-        if (!this.started || this.returningSeat(msg) >= 0) { this.seat(peer, msg); return; }
+        // Mid-game, only the same device walks straight back in. Someone matched just by name could be
+        // a different person with the same name, so the host is asked first ("Sam is back!").
+        if (!this.started || this.sameDeviceSeat(msg) >= 0) { this.seat(peer, msg); return; }
         this.pending.set(peer, msg);
         this.L('onJoinRequest', peer, (msg.name || '').trim() || 'A friend', this.returningSeat(msg) >= 0);
         return;

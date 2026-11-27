@@ -1434,7 +1434,7 @@ function loopOrder(p) {
 }
 
 // ---------------------------------------------------------------------------
-// App helpers shared with Android (Store.kt)
+// App helpers shared with Android (board sizes)
 // ---------------------------------------------------------------------------
 export const Boards = {
   sizes(shape) {

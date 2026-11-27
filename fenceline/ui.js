@@ -1,4 +1,4 @@
-// Small helpers for the hand-drawn UI: themed palette, sketchy boxes, buttons, chips and dialogs (a port of Ui.kt).
+// Small helpers for the hand-drawn UI: themed palette, sketchy boxes, buttons, chips and dialogs.
 import { DAY, NIGHT, pencilColor, paperTexture, drawBox, rgba } from './sketch.js';
 import { store } from './store.js';
 
