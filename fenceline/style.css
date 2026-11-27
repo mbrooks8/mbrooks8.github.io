@@ -44,7 +44,7 @@ a { color: var(--accent); }
 
 /* ---- sketchy boxes ---- */
 .sk { position: relative; isolation: isolate; background: none; border: 0; }
-.sk > .sk-bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.sk > .sk-bg { position: absolute; top:0; right:0; bottom:0; left:0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 .btn, .chip {
   display: block; width: 100%; padding: 10px 14px; cursor: pointer; text-align: center;
   color: var(--ink); line-height: 1.25; min-height: 48px;
@@ -75,13 +75,13 @@ a { color: var(--accent); }
 .title { font-size: 46px; color: var(--accent); margin: 18px 0 0; font-weight: 400; -webkit-text-stroke: .8px currentColor; line-height: 1.1; }
 .shapes { gap: 4px; }
 .shapechip { height: 78px; background: none; border: 0; padding: 0; cursor: pointer; position: relative; }
-.shapechip canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.shapechip canvas { position: absolute; top:0; right:0; bottom:0; left:0; width: 100%; height: 100%; pointer-events: none; }
 .shapechip:active canvas { opacity: .6; }
 .tip { color: var(--inkSoft); font-size: 14px; text-align: center; margin: 10px 0 0; }
 
 /* ---- dialogs ---- */
 .overlay {
-  position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+  position: fixed; top:0; right:0; bottom:0; left:0; z-index: 10; display: flex; align-items: center; justify-content: center;
   background: rgba(30,24,18,.38); padding: calc(16px + var(--sat)) 16px calc(16px + var(--sab));
   animation: fade .14s ease-out;
 }
@@ -122,11 +122,11 @@ canvas.mini { width: 100%; height: 190px; display: block; touch-action: none; }
 .note { margin: 6px 10px 0; padding: 10px 14px; font-size: 15px; cursor: pointer; }
 .boardframe { flex: 1; position: relative; min-height: 0; }
 canvas.board {
-  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  position: absolute; top:0; right:0; bottom:0; left:0; width: 100%; height: 100%; display: block;
   touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .loading {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+  position: absolute; top:0; right:0; bottom:0; left:0; display: flex; align-items: center; justify-content: center; text-align: center;
   color: var(--inkSoft); font-size: 18px; padding: 24px; pointer-events: none;
 }
 .bottombar { margin: 4px 10px 6px; gap: 6px; }

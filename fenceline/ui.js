@@ -151,4 +151,6 @@ export function closeTopDialog() {
   if (d && d.cancelable) { d.close(); return true; }
   return !!d;
 }
+/** The dialog on top, or null. */
+export function topDialog() { return openDialogs[openDialogs.length - 1] || null; }
 export function closeAllDialogs() { [...openDialogs].forEach(d => d.close()); }

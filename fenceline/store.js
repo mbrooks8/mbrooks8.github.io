@@ -51,6 +51,8 @@ export const store = {
   get tutorialStep() { return int('tutorialStep', 0); }, set tutorialStep(v) { set('tutorialStep', v); },
   get seenIntro() { return bool('seenIntro', false); }, set seenIntro(v) { set('seenIntro', v); },
 
+  /** Android app: how Play together connects, 'online' or 'nearby'. */
+  get mpVia() { return get('mpVia', 'online') === 'nearby' ? 'nearby' : 'online'; }, set mpVia(v) { set('mpVia', v === 'nearby' ? 'nearby' : 'online'); },
   get playerName() { return (get('playerName', '') || '').slice(0, 20); }, set playerName(v) { set('playerName', String(v || '').slice(0, 20)); },
   /** Random id for this browser, so a host can give a returning player their seat back. */
   get installId() {
