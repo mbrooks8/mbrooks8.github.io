@@ -1238,9 +1238,48 @@ function showGame(opts) {
       kids.push(button(mpMode === Mode.COOP ? 'Play again' : 'Rematch', () => {
         if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); setNote('Asked the host for another round…'); }
       }, { size: 18, accent: 'accent' }));
+      if (r.isHost) kids.push(button('Change board', nextBoardDialog, { size: 16 }));
     }
     kids.push(button('Leave', () => leaveGame(), { size: 16 }));
     col.replaceChildren(...kids);
+  };
+
+  /** Host, after a round: pick the shape, size and difficulty of the next one, then start it. */
+  const nextBoardDialog = () => {
+    let d;
+    let shape = mpShape, size = `${mpW}x${mpH}`, diff = mpDiff;
+    const col = el('div', { class: 'col' });
+    const fill = () => {
+      const sizes = Boards.sizes(shape).concat(mpMode === Mode.COOP ? GROUP_SIZES[shape.name] || [] : []);
+      if (!sizes.includes(size)) size = Boards.defaultSize ? Boards.defaultSize(shape) : sizes[1];
+      const kids = [
+        text('Next board', { size: 26, bold: true }),
+        el('div', { class: 'row gap6' }, ...Shape.entries.map(sh => chip(sh.label, shape === sh, () => { shape = sh; fill(); }, { size: 13 }))),
+        text(`${shape.label} board`, { size: 15, color: 'inkSoft' }),
+      ];
+      for (let i = 0; i < sizes.length; i += 4) {
+        kids.push(el('div', { class: 'row gap6' }, ...sizes.slice(i, i + 4).map(s =>
+          chip(s.replace('x', '×'), size === s, () => { size = s; fill(); }))));
+      }
+      kids.push(el('div', { class: 'row gap6' }, ...['EASY', 'MEDIUM', 'HARD'].map(dd => chip(cap(dd), diff === dd, () => { diff = dd; fill(); }))));
+      kids.push(el('div', { class: 'row gap14' },
+        button('Back', () => d.close(), { size: 17 }),
+        button('Start', () => {
+          d.close();
+          const [w, h] = size.split('x').map(Number);
+          const changed = shape !== mpShape || w !== mpW || h !== mpH || diff !== mpDiff;
+          mpShape = shape; mpW = w; mpH = h; mpDiff = diff;
+          if (changed) {
+            if (room) room.setup = setupText();
+            prepareNextPuzzle();
+          }
+          if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
+          launchRound();
+        }, { size: 17, accent: 'accent' })));
+      col.replaceChildren(...kids);
+    };
+    fill();
+    d = dialog(col);
   };
 
   /** Host: someone wants into the running game. */
