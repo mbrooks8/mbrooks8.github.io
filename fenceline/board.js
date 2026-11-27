@@ -68,10 +68,21 @@ export class BoardView {
     const r = this.canvas.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return;
     this.dpr = Math.min(3, window.devicePixelRatio || 1);
+    const oldW = this.w, oldH = this.h;
+    // Still showing the whole board? Then fit again. Zoomed or moved by the player? Keep their view
+    // (same zoom, same spot in the middle) when the space changes: notes, the player list, the keyboard.
+    const fitted = !oldW || !this.game || (this.scale === this.fitScale && this.offX === this.fitOffX && this.offY === this.fitOffY);
     this.w = r.width; this.h = r.height;
     this.canvas.width = Math.round(r.width * this.dpr);
     this.canvas.height = Math.round(r.height * this.dpr);
-    this.resetZoom();
+    if (fitted) { this.resetZoom(); return; }
+    const bx = (oldW / 2 - this.offX) / this.scale, by = (oldH / 2 - this.offY) / this.scale;
+    const keep = this.scale;
+    this.resetZoom(); // recomputes fitScale for the new size
+    this.scale = Math.max(keep, this.fitScale);
+    this.offX = this.w / 2 - bx * this.scale;
+    this.offY = this.h / 2 - by * this.scale;
+    this.clampPan(); this.invalidate();
   }
 
   resetZoom() {
@@ -83,6 +94,7 @@ export class BoardView {
     this.scale = this.fitScale;
     this.offX = this.w / 2 - (g.minX + g.maxX) / 2 * this.scale;
     this.offY = this.h / 2 - (g.minY + g.maxY) / 2 * this.scale;
+    this.fitOffX = this.offX; this.fitOffY = this.offY;
     this.invalidate();
   }
 
