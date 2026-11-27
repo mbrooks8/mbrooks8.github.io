@@ -163,7 +163,7 @@ function rulesDialog() {
       el('li', { text: 'Squares without a number can have any count.' }),
       el('li', { text: 'Every dot has two fence pieces touching it, or none. So the fence never stops, splits or crosses.' }),
       el('li', { text: "There's only one fence, and it goes all the way around." })),
-    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty), or switch the Pen to X. With Pen: Draw, drag from dot to dot to draw (two fingers move the board). Pinch to zoom, drag to move.', { size: 16 }),
+    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty), or switch the Pen to X. With Pen: Draw, drag from dot to dot to draw (two fingers move the board). Pinch to zoom, drag to move, and double-tap an empty spot to see the whole board.', { size: 16 }),
     el('div', { class: 'gap16' }, button('Got it', () => d.close())),
   );
   d = dialog(col);
@@ -779,7 +779,6 @@ function showGame(opts) {
     });
     item('Settings', () => settingsDialog(() => { applySettings(); refresh(); }));
     item('How to play', rulesDialog);
-    item('Reset zoom', () => board.resetZoom());
     d = dialog(col);
   };
 
