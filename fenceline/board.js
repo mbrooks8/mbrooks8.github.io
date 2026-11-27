@@ -45,6 +45,7 @@ export class BoardView {
     this.sounds = false; // only the real playing board makes sounds
     this.frame = 0;
     this.crossPen = false; // Pen: X, taps make X instead of fence
+    this.drawPen = false; // Pen: Draw, drag from dot to dot to draw (two fingers move the board)
     this.pingArmed = false; // co-op Ping button: the next tap points at the nearest dot
     this.onPingDone = null;
     this.pointers = new Map();
@@ -68,10 +69,21 @@ export class BoardView {
     const r = this.canvas.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return;
     this.dpr = Math.min(3, window.devicePixelRatio || 1);
+    const oldW = this.w, oldH = this.h;
+    // Still showing the whole board? Then fit again. Zoomed or moved by the player? Keep their view
+    // (same zoom, same spot in the middle) when the space changes: notes, the player list, the keyboard.
+    const fitted = !oldW || !this.game || (this.scale === this.fitScale && this.offX === this.fitOffX && this.offY === this.fitOffY);
     this.w = r.width; this.h = r.height;
     this.canvas.width = Math.round(r.width * this.dpr);
     this.canvas.height = Math.round(r.height * this.dpr);
-    this.resetZoom();
+    if (fitted) { this.resetZoom(); return; }
+    const bx = (oldW / 2 - this.offX) / this.scale, by = (oldH / 2 - this.offY) / this.scale;
+    const keep = this.scale;
+    this.resetZoom(); // recomputes fitScale for the new size
+    this.scale = Math.max(keep, this.fitScale);
+    this.offX = this.w / 2 - bx * this.scale;
+    this.offY = this.h / 2 - by * this.scale;
+    this.clampPan(); this.invalidate();
   }
 
   resetZoom() {
@@ -83,6 +95,7 @@ export class BoardView {
     this.scale = this.fitScale;
     this.offX = this.w / 2 - (g.minX + g.maxX) / 2 * this.scale;
     this.offY = this.h / 2 - (g.minY + g.maxY) / 2 * this.scale;
+    this.fitOffX = this.offX; this.fitOffY = this.offY;
     this.invalidate();
   }
 
@@ -550,6 +563,38 @@ export class BoardView {
     const pos = e => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     let downX = 0, downY = 0, lastX = 0, lastY = 0, moved = false, multi = false;
     let longTimer = 0, longFired = false, pinchDist = 0, lastTapAt = 0, lastTapX = 0, lastTapY = 0;
+    // Pen: Draw stroke state: the dot we're at, and the edges drawn this stroke (to back up over).
+    let drawing = false, atV = -1, trail = [], stroked = false;
+    const endDraw = () => {
+      const was = stroked;
+      if (stroked && this.game) this.game.endStroke();
+      drawing = false; atV = -1; trail = []; stroked = false; this.stroking = false;
+      if (was && this.onChanged) this.onChanged(); // now the note can go (it would have moved the board mid-stroke)
+    };
+    const drawTo = (x, y) => {
+      const gm = this.game, g = gm && gm.grid;
+      if (!g || this.locked) return;
+      const v = this.vertexNear(x, y, 0.33);
+      if (v < 0 || v === atV) return;
+      let edge = -1;
+      for (const e of g.vertexEdges[atV]) if (g.edgeVertices[2 * e] === v || g.edgeVertices[2 * e + 1] === v) { edge = e; break; }
+      if (edge < 0) return; // not next door; keep going until we reach a neighbour
+      if (this.onlyGuided && !this.guideEdges.has(edge)) { atV = v; return; }
+      if (!stroked) { gm.beginStroke(); stroked = true; this.stroking = true; }
+      if (trail.length && trail[trail.length - 1] === edge) {
+        trail.pop();
+        gm.setMark(edge, Edge.UNKNOWN); // backing up erases what this stroke just drew
+        if (this.sounds) play('erase');
+      } else if (gm.marks[edge] !== Edge.LINE) {
+        gm.setMark(edge, Edge.LINE);
+        if (gm.marks[edge] === Edge.LINE) trail.push(edge);
+        if (this.sounds) play('fence');
+      }
+      atV = v;
+      this.buzz(6);
+      this.clearHighlights();
+      this.onChanged && this.onChanged();
+    };
     const cancelLong = () => { if (longTimer) { clearTimeout(longTimer); longTimer = 0; } };
     const mid = () => {
       const ps = [...this.pointers.values()];
@@ -565,13 +610,15 @@ export class BoardView {
       if (this.pointers.size === 1) {
         multi = false; moved = false; longFired = false;
         downX = lastX = x; downY = lastY = y;
+        endDraw();
+        if (this.drawPen && !this.pingArmed) { atV = this.vertexNear(x, y, 0.45); drawing = atV >= 0; }
         cancelLong();
         longTimer = setTimeout(() => {
           longTimer = 0;
           if (!moved && !multi) { longFired = true; this.tapEdge(downX, downY, true); }
         }, 450);
       } else if (this.pointers.size === 2) {
-        multi = true; cancelLong();
+        multi = true; cancelLong(); endDraw();
         [lastX, lastY, pinchDist] = mid();
       }
     });
@@ -588,7 +635,13 @@ export class BoardView {
         this.clampPan(); this.invalidate();
       } else if (!multi) {
         if (!moved && Math.hypot(x - downX, y - downY) > 12) { moved = true; cancelLong(); }
-        if (moved) {
+        if (moved && drawing) {
+          // Walk the finger's path in small steps so a quick swipe doesn't skip a dot.
+          const g = this.game && this.game.grid;
+          const step = g ? Math.max(4, g.edgeLength * this.scale * 0.2) : 8;
+          const n = Math.max(1, Math.ceil(Math.hypot(x - lastX, y - lastY) / step));
+          for (let i = 1; i <= n; i++) drawTo(lastX + (x - lastX) * i / n, lastY + (y - lastY) * i / n);
+        } else if (moved) {
           this.offX += x - lastX; this.offY += y - lastY;
           this.clampPan(); this.invalidate();
         }
@@ -603,7 +656,9 @@ export class BoardView {
         return;
       }
       cancelLong();
-      if (e.type === 'pointercancel' || multi || moved || longFired) return;
+      const drew = drawing && moved;
+      endDraw();
+      if (e.type === 'pointercancel' || multi || moved || longFired || drew) return;
       const [x, y] = pos(e);
       const now = performance.now();
       const edge = this.edgeAt(x, y);

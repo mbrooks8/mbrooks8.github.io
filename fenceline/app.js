@@ -163,7 +163,7 @@ function rulesDialog() {
       el('li', { text: 'Squares without a number can have any count.' }),
       el('li', { text: 'Every dot has two fence pieces touching it, or none. So the fence never stops, splits or crosses.' }),
       el('li', { text: "There's only one fence, and it goes all the way around." })),
-    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty), or switch the Pen to X. Pinch to zoom, drag to move.', { size: 16 }),
+    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty), or switch the Pen to X. With Pen: Draw, drag from dot to dot to draw (two fingers move the board). Pinch to zoom, drag to move.', { size: 16 }),
     el('div', { class: 'gap16' }, button('Got it', () => d.close())),
   );
   d = dialog(col);
@@ -534,7 +534,13 @@ function showGame(opts) {
   const boardFrame = el('div', { class: 'boardframe' }, canvas, loading);
   const undoBtn = button('Undo', () => { if (game && game.canUndo) play('flick'); game && game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
   const redoBtn = button('Redo', () => { if (game && game.canRedo) play('flick'); game && game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
-  const penBtn = button('Pen: Fence', () => { board.crossPen = !board.crossPen; refresh(); }, { size: 16 });
+  // Pen: Fence -> X -> Draw (drag from dot to dot) -> Fence.
+  const penBtn = button('Pen: Fence', () => {
+    if (board.drawPen) { board.drawPen = false; board.crossPen = false; }
+    else if (board.crossPen) { board.crossPen = false; board.drawPen = true; }
+    else board.crossPen = true;
+    refresh();
+  }, { size: 16 });
   // Co-op: Ping, then tap the board to point everyone at that dot.
   const pingBtn = button('Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap a dot to show everyone.'); }, { size: 16 });
   pingBtn.hidden = true;
@@ -546,7 +552,7 @@ function showGame(opts) {
   board.sounds = true;
   board.onPingDone = () => { refresh(); setNote(''); };
   if (window.__fenceline) window.__fenceline.board = board;
-  board.onChanged = () => { pendingFix = null; if (mode !== 'tutorial') setNote(''); advanceGuide(); refresh(); save(); };
+  board.onChanged = () => { pendingFix = null; if (mode !== 'tutorial' && !board.stroking) setNote(''); advanceGuide(); refresh(); save(); };
   board.onOffGuide = () => { const s = guide[guideAt]; if (s) setNote('Try the glowing gap. ' + s.text); };
 
   const applySettings = () => {
@@ -597,7 +603,7 @@ function showGame(opts) {
     if (!game) return;
     undoBtn.classList.toggle('dim', !game.canUndo);
     redoBtn.classList.toggle('dim', !game.canRedo);
-    setLabel(penBtn, board.crossPen ? 'Pen: X' : 'Pen: Fence');
+    setLabel(penBtn, board.drawPen ? 'Pen: Draw' : board.crossPen ? 'Pen: X' : 'Pen: Fence');
     pingBtn.hidden = !board.onPing;
     pingBtn.classList.toggle('on', board.pingArmed);
     board.invalidate();
@@ -865,6 +871,24 @@ function showGame(opts) {
   const colorOf = p => pencilColor(room ? (room.pencils[p] || 0) : 0, theme.night);
   const styleOf = p => pencilStyle(room ? (room.pencils[p] || 0) : 0);
   const boardLabelOf = (sh, w, h, d) => `${Boards.label(sh, w, h)} ${diffLabel(d)}`;
+  // Players away for a while drop off the list (they keep their seat, colour and fences if they come back).
+  const AWAY_SHOWN_MS = 30000;
+  const awaySince = new Map();
+  let awayTimer = 0;
+  const shownPlayers = r => {
+    const now = performance.now();
+    let next = Infinity;
+    const out = r.players.filter(p => {
+      if (!r.away[p]) { awaySince.delete(p); return true; }
+      if (!awaySince.has(p)) awaySince.set(p, now);
+      const left = awaySince.get(p) + AWAY_SHOWN_MS - now;
+      if (left > 0) next = Math.min(next, left);
+      return left > 0;
+    });
+    clearTimeout(awayTimer);
+    if (next < Infinity) awayTimer = setTimeout(() => { if (!disposed) { updatePlayers(); fillLobby(); } }, next + 50);
+    return out;
+  };
   /** ★ marks whoever hosts right now (it moves when hosting moves). */
   const star = p => (room && p === (room.isHost ? room.me : room.hostSeat) ? '★ ' : '');
   const dotLine = (p, label) => el('span', { class: 'pl' }, pencilSwatch(room ? (room.pencils[p] || 0) : 0, theme.night), label);
@@ -1071,7 +1095,7 @@ function showGame(opts) {
         kids.push(el('div', { class: 'roomcode' }, el('div', { class: 'lbl2', text: 'Room code' }), el('div', { class: 'big', text: r.roomId.toUpperCase() })));
         kids.push(button('Share invite', shareInvite, { size: 16 }));
       }
-      kids.push(el('div', { class: 'plist' }, ...r.players.map(p => dotLine(p, star(p) + (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
+      kids.push(el('div', { class: 'plist' }, ...shownPlayers(r).map(p => dotLine(p, star(p) + (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
       if (r.isHost) {
         const b = button('Start', () => { if (r.here.length >= 2) launchRound(); }, { size: 18, accent: 'accent' });
         b.classList.toggle('dim', !ready);
@@ -1183,8 +1207,9 @@ function showGame(opts) {
       board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i));
       board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i));
     }
-    const many = r.players.length > 4;
-    playersText.replaceChildren(...r.players.map(p => {
+    const shown = shownPlayers(r);
+    const many = shown.length > 4;
+    playersText.replaceChildren(...shown.map(p => {
       const label = star(p) + nameOf(p).slice(0, many ? 8 : 12) + (r.away[p] ? ' (away)' : '');
       return dotLine(p, mpMode === Mode.VERSUS ? `${label} ${Math.floor((progress.get(p) || 0) * 100)}%` : label);
     }));
@@ -1325,6 +1350,7 @@ function showGame(opts) {
     document.removeEventListener('visibilitychange', onVis);
     document.removeEventListener('visibilitychange', onWake);
     for (const t of leftTimers.values()) clearTimeout(t);
+    clearTimeout(awayTimer);
     window.removeEventListener('pagehide', save);
     onThemeChange.delete(onTheme);
     clearTimeout(syncTimer); clearTimeout(countTimer); clearTimeout(progTimer);
