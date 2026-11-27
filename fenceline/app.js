@@ -871,6 +871,24 @@ function showGame(opts) {
   const colorOf = p => pencilColor(room ? (room.pencils[p] || 0) : 0, theme.night);
   const styleOf = p => pencilStyle(room ? (room.pencils[p] || 0) : 0);
   const boardLabelOf = (sh, w, h, d) => `${Boards.label(sh, w, h)} ${diffLabel(d)}`;
+  // Players away for a while drop off the list (they keep their seat, colour and fences if they come back).
+  const AWAY_SHOWN_MS = 30000;
+  const awaySince = new Map();
+  let awayTimer = 0;
+  const shownPlayers = r => {
+    const now = performance.now();
+    let next = Infinity;
+    const out = r.players.filter(p => {
+      if (!r.away[p]) { awaySince.delete(p); return true; }
+      if (!awaySince.has(p)) awaySince.set(p, now);
+      const left = awaySince.get(p) + AWAY_SHOWN_MS - now;
+      if (left > 0) next = Math.min(next, left);
+      return left > 0;
+    });
+    clearTimeout(awayTimer);
+    if (next < Infinity) awayTimer = setTimeout(() => { if (!disposed) { updatePlayers(); fillLobby(); } }, next + 50);
+    return out;
+  };
   /** ★ marks whoever hosts right now (it moves when hosting moves). */
   const star = p => (room && p === (room.isHost ? room.me : room.hostSeat) ? '★ ' : '');
   const dotLine = (p, label) => el('span', { class: 'pl' }, pencilSwatch(room ? (room.pencils[p] || 0) : 0, theme.night), label);
@@ -1077,7 +1095,7 @@ function showGame(opts) {
         kids.push(el('div', { class: 'roomcode' }, el('div', { class: 'lbl2', text: 'Room code' }), el('div', { class: 'big', text: r.roomId.toUpperCase() })));
         kids.push(button('Share invite', shareInvite, { size: 16 }));
       }
-      kids.push(el('div', { class: 'plist' }, ...r.players.map(p => dotLine(p, star(p) + (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
+      kids.push(el('div', { class: 'plist' }, ...shownPlayers(r).map(p => dotLine(p, star(p) + (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
       if (r.isHost) {
         const b = button('Start', () => { if (r.here.length >= 2) launchRound(); }, { size: 18, accent: 'accent' });
         b.classList.toggle('dim', !ready);
@@ -1189,8 +1207,9 @@ function showGame(opts) {
       board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i));
       board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i));
     }
-    const many = r.players.length > 4;
-    playersText.replaceChildren(...r.players.map(p => {
+    const shown = shownPlayers(r);
+    const many = shown.length > 4;
+    playersText.replaceChildren(...shown.map(p => {
       const label = star(p) + nameOf(p).slice(0, many ? 8 : 12) + (r.away[p] ? ' (away)' : '');
       return dotLine(p, mpMode === Mode.VERSUS ? `${label} ${Math.floor((progress.get(p) || 0) * 100)}%` : label);
     }));
@@ -1331,6 +1350,7 @@ function showGame(opts) {
     document.removeEventListener('visibilitychange', onVis);
     document.removeEventListener('visibilitychange', onWake);
     for (const t of leftTimers.values()) clearTimeout(t);
+    clearTimeout(awayTimer);
     window.removeEventListener('pagehide', save);
     onThemeChange.delete(onTheme);
     clearTimeout(syncTimer); clearTimeout(countTimer); clearTimeout(progTimer);
