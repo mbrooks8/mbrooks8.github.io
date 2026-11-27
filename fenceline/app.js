@@ -848,7 +848,6 @@ function showGame(opts) {
       }, { size: 18, accent: 'accent' })));
     }
     if (mode !== 'tutorial' && PuzzleCode.of(g.puzzle)) kids.push(el('div', { class: 'gap8' }, button('Challenge a friend', () => sharePuzzle(g.elapsedMs), { size: 16 })));
-    kids.push(el('div', { class: 'gap8' }, button('Close', () => d.close(), { size: 16 })));
     kids.push(el('div', { class: 'gap8' }, button('Menu', () => { d.close(); leaveGame(); }, { size: 16 })));
     d = dialog(el('div', { class: 'col' }, ...kids));
   };
