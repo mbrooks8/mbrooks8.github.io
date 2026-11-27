@@ -562,7 +562,7 @@ export class BoardView {
     const c = this.canvas;
     const pos = e => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     let downX = 0, downY = 0, lastX = 0, lastY = 0, moved = false, multi = false;
-    let longTimer = 0, longFired = false, pinchDist = 0, lastTapAt = 0, lastTapX = 0, lastTapY = 0;
+    let longTimer = 0, longFired = false, pinchDist = 0, lastTapAt = 0, lastTapX = 0, lastTapY = 0, lastTapEdge = -1, lastTapUndo = null;
     // Pen: Draw stroke state: the dot we're at, and the edges drawn this stroke (to back up over).
     let drawing = false, atV = -1, trail = [], stroked = false;
     const endDraw = () => {
@@ -662,10 +662,23 @@ export class BoardView {
       const [x, y] = pos(e);
       const now = performance.now();
       const edge = this.edgeAt(x, y);
-      // Double tap away from any gap resets the zoom.
-      if (edge < 0 && now - lastTapAt < 350 && Math.hypot(x - lastTapX, y - lastTapY) < 30) { this.resetZoom(); lastTapAt = 0; return; }
-      lastTapAt = now; lastTapX = x; lastTapY = y;
+      const gm = this.game;
+      const zoomed = this.scale > this.fitScale * 1.01 || this.offX !== this.fitOffX || this.offY !== this.fitOffY;
+      // Double tap shows the whole board again: anywhere when zoomed in or moved (the first tap's mark
+      // is taken back), and away from any gap otherwise.
+      if (now - lastTapAt < 350 && Math.hypot(x - lastTapX, y - lastTapY) < 30 && (edge < 0 || (zoomed && edge === lastTapEdge))) {
+        if (edge >= 0 && gm && lastTapUndo && gm.undoStack[gm.undoStack.length - 1] === lastTapUndo) {
+          gm.undo(); gm.redoStack.pop();
+          this.onChanged && this.onChanged();
+        }
+        this.resetZoom(); lastTapAt = 0; lastTapUndo = null;
+        return;
+      }
+      lastTapAt = now; lastTapX = x; lastTapY = y; lastTapEdge = edge;
+      const top = gm && gm.undoStack[gm.undoStack.length - 1];
       this.tapEdge(x, y, false);
+      const after = gm && gm.undoStack[gm.undoStack.length - 1];
+      lastTapUndo = after !== top ? after : null;
     };
     c.addEventListener('pointerup', up);
     c.addEventListener('pointercancel', up);

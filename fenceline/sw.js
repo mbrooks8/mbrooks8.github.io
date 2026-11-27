@@ -1,6 +1,6 @@
 // Offline support: keeps the whole game cached so it plays without a connection.
 // Bump VERSION whenever any file changes, so phones pick up the new one.
-const VERSION = 'fenceline-web-14';
+const VERSION = 'fenceline-web-16';
 const FILES = [
   './', './index.html', './style.css', './app.js', './ui.js', './board.js', './sketch.js', './store.js',
   './compat.js', './core.js', './worker.js', './room.js', './net.js', './native.js', './sound.js', './nearby.js', './manifest.webmanifest', './fonts/coming-soon.woff2',
@@ -8,7 +8,8 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's own HTTP cache, which can still hold the old files for a few minutes.
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
