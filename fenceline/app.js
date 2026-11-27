@@ -11,6 +11,7 @@ import { PENCILS, pencilColor, pencilLine } from './sketch.js';
 import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
 import { Link, cleanCode } from './net.js';
 import { NearbyLink } from './nearby.js';
+import { play } from './sound.js';
 
 const SHARE_BASE = 'https://mbrooks8.github.io/fenceline/?p=';
 const JOIN_BASE = 'https://mbrooks8.github.io/fenceline/?join=';
@@ -126,6 +127,7 @@ function settingsDialog(onDone) {
       toggle('Show mistakes', 'showErrors'),
       toggle('Auto-X around finished numbers', 'autoCross'),
       toggle('Show timer', 'showTimer'),
+      toggle('Sound', 'sound'),
       ...(canVibrate() ? [toggle('Vibrate', 'haptics')] : []),
       ...(canKeepAwake() ? [toggle('Keep screen on', 'keepAwake')] : []),
       text('Challenge', { size: 17, bold: true, cls: 'gap14' }),
@@ -530,8 +532,8 @@ function showGame(opts) {
   const canvas = el('canvas', { class: 'board', 'aria-label': 'Puzzle board' });
   const loading = el('div', { class: 'loading', text: 'sharpening pencils…' });
   const boardFrame = el('div', { class: 'boardframe' }, canvas, loading);
-  const undoBtn = button('Undo', () => { game && game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
-  const redoBtn = button('Redo', () => { game && game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
+  const undoBtn = button('Undo', () => { if (game && game.canUndo) play('flick'); game && game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
+  const redoBtn = button('Redo', () => { if (game && game.canRedo) play('flick'); game && game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
   const penBtn = button('Pen: Fence', () => { board.crossPen = !board.crossPen; refresh(); }, { size: 16 });
   // Co-op: Ping, then tap the board to point everyone at that dot.
   const pingBtn = button('Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap a dot to show everyone.'); }, { size: 16 });
@@ -541,6 +543,7 @@ function showGame(opts) {
   const root = el('div', { class: 'game' }, top, playersText, appLink, note, boardFrame, bar);
 
   const board = new BoardView(canvas);
+  board.sounds = true;
   board.onPingDone = () => { refresh(); setNote(''); };
   if (window.__fenceline) window.__fenceline.board = board;
   board.onChanged = () => { pendingFix = null; if (mode !== 'tutorial') setNote(''); advanceGuide(); refresh(); save(); };
@@ -687,7 +690,7 @@ function showGame(opts) {
     mb = new BoardView(mini);
     mb.locked = true; mb.showErrors = false; mb.palette = theme.pal; mb.pencilColor = theme.accent;
     mb.setGame(done);
-    setTimeout(() => mb.playSolved(), 250);
+    setTimeout(() => mb.playSolved({ celebrate: false }), 250);
   };
 
   // Tools.
@@ -700,12 +703,14 @@ function showGame(opts) {
       const same = pendingFix && pendingFix.length === h.wrong.length && h.wrong.every(e => pendingFix.includes(e));
       if (same) {
         const n = g.clearMistakes();
+        play('erase');
         board.clearHighlights();
         setNote(`Erased ${n} wrong mark${n === 1 ? '' : 's'}.`);
         pendingFix = null;
         refresh(); save();
       } else {
         board.flashMistakes(h.wrong);
+        play('oops');
         setNote(h.reason + ' Hint again to erase.');
         pendingFix = h.wrong;
       }
@@ -713,6 +718,7 @@ function showGame(opts) {
     }
     pendingFix = null;
     g.applyHint(h);
+    play('hint');
     board.showHint(h.edge, h.focusCell, h.focusVertex);
     setNote(h.reason);
     refresh(); save();
@@ -749,6 +755,7 @@ function showGame(opts) {
     item(hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint());
     item('Clear mistakes', () => {
       const n = game ? game.clearMistakes() : 0;
+      if (n) play('erase');
       setNote(n === 0 ? 'No mistakes!' : `Erased ${n} mark${n === 1 ? '' : 's'}.`);
       refresh(); save();
     });
@@ -794,17 +801,20 @@ function showGame(opts) {
     winShown = true;
     bankTime();
     g.elapsedMs = Math.round(g.elapsedMs);
-    if (!alreadyDone) board.playSolved();
+    // The win show (loop glow, shading, confetti, tune); the card waits for it.
+    // Co-op confetti comes in everyone's pencil colours.
+    board.confettiColors = mode === 'mp' && mpMode === Mode.COOP && room ? room.players.map(colorOf) : null;
+    const showMs = alreadyDone ? 0 : Math.max(1300, Math.min(3000, board.playSolved()));
     const code = PuzzleCode.of(g.puzzle);
     const kind = mode === 'daily' ? 'daily' : mode !== 'mp' ? '' : mpMode === Mode.COOP ? 'coop' : 'versus';
     if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind);
-    if (mode === 'mp') { if (!alreadyDone) board.buzz(40); mpSolved(g); return; }
+    if (mode === 'mp') { if (!alreadyDone) board.buzz(40); mpSolved(g, showMs); return; }
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
     const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, mode === 'daily') : false;
     store.savedGame = null;
     if (!alreadyDone) board.buzz(40);
-    setTimeout(() => { if (!disposed) showWin(g, best); }, alreadyDone ? 0 : 1300);
+    setTimeout(() => { if (!disposed) showWin(g, best); }, showMs);
   };
 
   const showWin = (g, newBest) => {
@@ -872,9 +882,11 @@ function showGame(opts) {
           round = msg.round;
           startRound(p, same);
         } break;
-        case 'PING': board.showPing(msg.vertex, colorOf(msg.player)); setNote(`${nameOf(msg.player)} says: look here!`); break;
+        case 'PING': board.showPing(msg.vertex, colorOf(msg.player)); play('ping'); setNote(`${nameOf(msg.player)} says: look here!`); break;
         case 'PROG': progress.set(msg.player, msg.fraction); updatePlayers(); fillResults(); break;
         case 'DONE':
+          // Someone else got there first: a kind little "well played".
+          if (msg.place === 1 && msg.player !== r.me && !finished.has(msg.player)) play('done');
           finished.set(msg.player, [msg.ms, msg.hints, msg.place]);
           progress.set(msg.player, 1);
           updatePlayers();
@@ -883,7 +895,7 @@ function showGame(opts) {
         case 'MARK': case 'STATE':
           // Skip a full sync that may predate our own very latest edit; the next one catches up.
           if (msg.t === 'STATE' && performance.now() - lastLocalEdit < 1500) return;
-          if (coop && coop.apply(msg)) { board.invalidate(); refresh(); }
+          if (coop && coop.apply(msg)) { if (msg.t === 'MARK') play('friend'); board.invalidate(); refresh(); }
           break;
         case 'REMATCH': {
           const roundOver = (game && game.isSolved()) || finished.size > 0;
@@ -900,7 +912,7 @@ function showGame(opts) {
       const later = () => leftTimers.set(player, setTimeout(() => {
         if (document.visibilityState === 'hidden' || performance.now() - wokeAt < 10000) { later(); return; }
         leftTimers.delete(player);
-        if (game && room && room.away[player]) { setNote(`${nameOf(player)} dropped out. They can join again.`); toldLeft.add(player); }
+        if (game && room && room.away[player]) { setNote(`${nameOf(player)} dropped out. They can join again.`); toldLeft.add(player); play('leave'); }
       }, 10000));
       later();
       progress.delete(player);
@@ -930,7 +942,7 @@ function showGame(opts) {
     onJoinRequest(r, peer, name, returning) { askToJoin(r, peer, name, returning); },
     onJoined(r, player, returning) {
       clearTimeout(leftTimers.get(player)); leftTimers.delete(player);
-      if (!returning || toldLeft.delete(player)) laterNote(`${nameOf(player)} ${returning ? 'is back' : 'joined'}!`);
+      if (!returning || toldLeft.delete(player)) { laterNote(`${nameOf(player)} ${returning ? 'is back' : 'joined'}!`); play('join'); }
       if (mpMode === Mode.COOP && coop) coop.syncAll(); // catch them up on the shared board
       updatePlayers(); fillResults();
     },
@@ -1133,6 +1145,7 @@ function showGame(opts) {
     loading.hidden = false;
     loading.classList.add('count');
     loading.textContent = n > 0 ? String(n) : 'Go!';
+    play(n > 0 ? 'tick' : 'go');
     clearTimeout(countTimer);
     if (n > 0) { countTimer = setTimeout(() => countdown(n - 1), 900); return; }
     countTimer = setTimeout(() => {
@@ -1171,7 +1184,7 @@ function showGame(opts) {
     }));
   };
 
-  const mpSolved = g => {
+  const mpSolved = (g, showMs = 1300) => {
     const r = room;
     if (mpMode === Mode.VERSUS) {
       if (r && r.me >= 0) {
@@ -1181,9 +1194,9 @@ function showGame(opts) {
         progress.set(r.me, 1);
       }
       updatePlayers();
-      setTimeout(() => { if (disposed) return; if (!resultsD) showResults(); else fillResults(); }, 1300);
+      setTimeout(() => { if (disposed) return; if (!resultsD) showResults(); else fillResults(); }, showMs);
     } else {
-      setTimeout(() => { if (!disposed) showResults(); }, 1300);
+      setTimeout(() => { if (!disposed) showResults(); }, showMs);
     }
   };
 
