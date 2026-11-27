@@ -28,6 +28,10 @@ const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platfo
 const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 const app = document.getElementById('app');
 const cap = s => s.charAt(0) + s.slice(1).toLowerCase();
+/** The day a daily puzzle belongs to (its seed is yyyymmdd). */
+const dailyDate = p => { const n = Number(p.seed || 0); return n > 19000000 ? new Date(Math.floor(n / 10000), Math.floor(n / 100) % 100 - 1, n % 100) : new Date(); };
+/** True when [p] is today's daily puzzle (a daily left over from an earlier day is just a puzzle now). */
+const isTodaysDaily = p => !!p && p.seed != null && BigInt(p.seed) === dailySeed(new Date()) && p.shape === Shape.SQUARE && p.width === 10 && p.height === 10;
 const diffLabel = d => (d || '').toLowerCase();
 
 // ---- puzzle factory: generates in workers and keeps the next one ready ----
@@ -259,7 +263,7 @@ function showMenu() {
     try { saved = store.savedGame ? Game.load(store.savedGame) : null; } catch (e) { saved = null; }
     if (saved && !saved.isSolved()) {
       const p = saved.puzzle;
-      const label = store.savedMode === 'daily' ? 'Daily puzzle' : store.savedMode === 'tutorial' ? 'Lesson'
+      const label = store.savedMode === 'daily' && isTodaysDaily(p) ? 'Daily puzzle' : store.savedMode === 'tutorial' ? 'Lesson'
         : `${Boards.label(p.shape, p.width, p.height)} ${diffLabel(p.difficulty)}`;
       kids.push(el('div', { class: 'gap22' }, button(`Continue  ·  ${label}  ·  ${formatTime(saved.elapsedMs)}`, () => openGame({ mode: 'continue' }), { accent: 'accent' })));
     }
@@ -513,6 +517,7 @@ function showGame(opts) {
   let lastLocalEdit = -Infinity, round = 0, syncTimer = 0, countTimer = 0, roomCode = opts.code || '';
   const nearby = opts.via === 'nearby'; // Android app, same room over Nearby (else online)
   const progress = new Map(), finished = new Map(); // finished: player -> [ms, hints, place]
+  const wantsRematch = new Set(); // players who asked for another round
   const hintsOff = () => store.noHints && mode !== 'tutorial';
 
   // Layout.
@@ -532,8 +537,9 @@ function showGame(opts) {
   const canvas = el('canvas', { class: 'board', 'aria-label': 'Puzzle board' });
   const loading = el('div', { class: 'loading', text: 'sharpening pencils…' });
   const boardFrame = el('div', { class: 'boardframe' }, canvas, loading);
-  const undoBtn = button('Undo', () => { if (game && game.canUndo) play('flick'); game && game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
-  const redoBtn = button('Redo', () => { if (game && game.canRedo) play('flick'); game && game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
+  // A finished puzzle stays finished: undo would un-solve a win that is already counted.
+  const undoBtn = button('Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
+  const redoBtn = button('Redo', () => { if (!game || game.isSolved()) return; if (game.canRedo) play('flick'); game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
   // Pen: Fence -> X -> Draw (drag from dot to dot) -> Fence.
   const penBtn = button('Pen: Fence', () => {
     if (board.drawPen) { board.drawPen = false; board.crossPen = false; }
@@ -601,8 +607,9 @@ function showGame(opts) {
 
   const refresh = () => {
     if (!game) return;
-    undoBtn.classList.toggle('dim', !game.canUndo);
-    redoBtn.classList.toggle('dim', !game.canRedo);
+    const over = game.isSolved();
+    undoBtn.classList.toggle('dim', over || !game.canUndo);
+    redoBtn.classList.toggle('dim', over || !game.canRedo);
     setLabel(penBtn, board.drawPen ? 'Pen: Draw' : board.crossPen ? 'Pen: X' : 'Pen: Fence');
     pingBtn.hidden = !board.onPing;
     pingBtn.classList.toggle('on', board.pingArmed);
@@ -622,7 +629,7 @@ function showGame(opts) {
     board.setGame(g);
     const p = g.puzzle;
     let head;
-    if (mode === 'daily') head = 'Daily · ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (mode === 'daily') head = 'Daily · ' + dailyDate(p).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     else if (mode === 'tutorial') head = `Lesson ${step + 1}/${Tutorial.steps.length} · ${Tutorial.steps[step].title}`;
     else if (mode === 'mp') head = (mpMode === Mode.COOP ? 'Co-op · ' : 'Versus · ') + `${Boards.label(p.shape, p.width, p.height)} ${diffLabel(p.difficulty)}`;
     else head = `${Boards.label(p.shape, p.width, p.height)} · ${diffLabel(p.difficulty)}`;
@@ -637,24 +644,30 @@ function showGame(opts) {
     if (g.isSolved()) onSolved(true);
   };
 
+  let asked = 0; // newest puzzle asked for
   const newPuzzle = (w, h, d, seed, shape) => {
     mode = 'free';
     showLoading();
+    loading.textContent = 'sharpening pencils…';
     setNote('');
+    // Very big boards (from a code) can take a while to draw; say so rather than look stuck.
+    const ask = ++asked;
+    setTimeout(() => { if (!disposed && ask === asked && !loading.hidden) loading.textContent = 'Big board! This one takes a little while to draw…'; }, 3000);
     factory.request(w, h, d, seed, shape).then(p => start(new Game(p)), err => {
       loading.textContent = "Oops, that puzzle wouldn't draw. Go back and try again.";
       console.error(err);
     });
   };
 
-  const startTutorial = i => {
+  const startTutorial = (i, goal = true) => {
     mode = 'tutorial'; step = i;
     store.tutorialStep = i;
     const p = Tutorial.puzzle(i);
     const g = new Game(p);
     for (const e of Tutorial.prepared(i, p)) g.setMark(e, Edge.LINE);
+    g.undoStack.length = 0; // the lesson's own fences are part of the puzzle, not something to undo
     start(g);
-    if (i === 0) showGoal();
+    if (i === 0 && goal) showGoal();
   };
 
   // Guided lessons.
@@ -700,6 +713,12 @@ function showGame(opts) {
   };
 
   // Tools.
+  /** Co-op: the shared board can only carry hinted pieces, so every phone counts just those (same number for all). */
+  const sharedHints = () => {
+    if (!shared() || !game) return;
+    let n = 0; for (const h of game.hinted) if (h) n++;
+    game.hintsUsed = n;
+  };
   const hint = () => {
     const g = game;
     if (!g || g.isSolved()) return;
@@ -709,6 +728,7 @@ function showGame(opts) {
       const same = pendingFix && pendingFix.length === h.wrong.length && h.wrong.every(e => pendingFix.includes(e));
       if (same) {
         const n = g.clearMistakes();
+        sharedHints();
         play('erase');
         board.clearHighlights();
         setNote(`Erased ${n} wrong mark${n === 1 ? '' : 's'}.`);
@@ -761,6 +781,7 @@ function showGame(opts) {
     item(hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint());
     item('Clear mistakes', () => {
       const n = game ? game.clearMistakes() : 0;
+      sharedHints();
       if (n) play('erase');
       setNote(n === 0 ? 'No mistakes!' : `Erased ${n} mark${n === 1 ? '' : 's'}.`);
       refresh(); save();
@@ -792,10 +813,17 @@ function showGame(opts) {
         button('Cancel', () => d.close(), { size: 17 }),
         button('Reset', () => {
           d.close();
+          if (mode === 'tutorial') { // start the lesson over, with its own fences back in place
+            const ms = game ? game.elapsedMs : 0;
+            board.clearHighlights(); pendingFix = null;
+            startTutorial(step, false);
+            if (game) game.elapsedMs = ms;
+            return;
+          }
           if (game) game.reset();
           board.clearHighlights(); pendingFix = null;
           if (shared() && coop) coop.syncAll(); // host also sends the whole board, so everyone lands on the same blank board
-          if (mode !== 'tutorial') setNote(''); else { guideAt = 0; startGuide(game); }
+          setNote('');
           refresh(); save();
         }, { size: 17, accent: 'error' })),
     ));
@@ -812,12 +840,13 @@ function showGame(opts) {
     board.confettiColors = mode === 'mp' && mpMode === Mode.COOP && room ? room.players.map(colorOf) : null;
     const showMs = alreadyDone ? 0 : Math.max(1300, Math.min(3000, board.playSolved()));
     const code = PuzzleCode.of(g.puzzle);
-    const kind = mode === 'daily' ? 'daily' : mode !== 'mp' ? '' : mpMode === Mode.COOP ? 'coop' : 'versus';
+    const daily = mode === 'daily' && isTodaysDaily(g.puzzle); // a daily finished after midnight is just a puzzle
+    const kind = daily ? 'daily' : mode !== 'mp' ? '' : mpMode === Mode.COOP ? 'coop' : 'versus';
     if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind);
     if (mode === 'mp') { if (!alreadyDone) board.buzz(40); mpSolved(g, showMs); return; }
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
-    const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, mode === 'daily') : false;
+    const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, daily) : false;
     store.savedGame = null;
     if (!alreadyDone) board.buzz(40);
     setTimeout(() => { if (!disposed) showWin(g, best); }, showMs);
@@ -832,7 +861,7 @@ function showGame(opts) {
     const parts = [`Time ${formatTime(g.elapsedMs)}`, g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`];
     kids.push(text(parts.join(' · '), { size: 18, cls: 'center gap8' }));
     if (newBest) kids.push(text('★ New best! ★', { size: 18, bold: true, color: 'hint', cls: 'center' }));
-    if (mode === 'daily') kids.push(text(`Streak: ${store.dailyStreak}`, { size: 17, cls: 'center' }));
+    if (mode === 'daily' && isTodaysDaily(g.puzzle)) kids.push(text(`Streak: ${store.dailyStreak}`, { size: 17, cls: 'center' }));
     if (mode === 'tutorial') {
       if (step + 1 < Tutorial.steps.length) {
         kids.push(el('div', { class: 'gap16' }, button('Next lesson', () => { d.close(); startTutorial(step + 1); }, { size: 18, accent: 'accent' })));
@@ -925,9 +954,14 @@ function showGame(opts) {
           if (coop && coop.apply(msg)) { if (msg.t === 'MARK') play('friend'); board.invalidate(); refresh(); }
           break;
         case 'REMATCH': {
-          const roundOver = (game && game.isSolved()) || finished.size > 0;
+          // Start again right away only when nobody is still drawing; otherwise the host decides.
+          const roundOver = mpMode === Mode.COOP ? !!(game && game.isSolved()) : r.here.every(p => finished.has(p));
           if (r.isHost && roundOver) launchRound();
-          else if (!r.isHost) setNote(`${nameOf(msg.player)} wants another round!`);
+          else {
+            wantsRematch.add(msg.player);
+            setNote(`${nameOf(msg.player)} wants another round!`);
+            if (resultsCol) fillResults();
+          }
           break;
         }
       }
@@ -973,7 +1007,7 @@ function showGame(opts) {
       if (mpMode === Mode.COOP && coop) coop.syncAll(); // catch them up on the shared board
       updatePlayers(); fillResults();
     },
-    onDenied() { lobbyStatus = 'The host said not now.'; fillLobby(); },
+    onDenied() { lobbyStatus = 'The host said not now, or the game is full.'; fillLobby(); },
     onHostsChanged() { fillLobby(); },
     onError(t) { lobbyStatus = t; fillLobby(); if (!lobbyD) setNote(t); },
     onStatus(t) {
@@ -1103,7 +1137,7 @@ function showGame(opts) {
       } else kids.push(text('The host starts the game.', { size: 15, color: 'inkSoft' }));
     }
     if (lobbyStatus) kids.push(text(lobbyStatus, { size: 15, color: 'inkSoft' }));
-    if (!room && opts.role === 'join' && link == null) kids.push(button('Try again', () => openLink('join'), { size: 16, accent: 'accent' }));
+    if (!room && link == null) kids.push(button('Try again', () => openLink(opts.role === 'join' ? 'join' : 'host'), { size: 16, accent: 'accent' }));
     kids.push(button('Cancel', () => leaveGame(), { size: 16 }));
     col.replaceChildren(...kids);
   };
@@ -1132,7 +1166,7 @@ function showGame(opts) {
     if (lobbyD) { lobbyD.close(); lobbyD = null; lobbyCol = null; }
     if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
     if (coop) { coop.detach(); coop = null; }
-    progress.clear(); finished.clear(); lastSentProgress = -1;
+    progress.clear(); finished.clear(); wantsRematch.clear(); lastSentProgress = -1;
     const g = keep ? game : new Game(p);
     g.localPlayer = Math.max(0, r.me);
     if (mpMode === Mode.COOP) {
@@ -1271,9 +1305,14 @@ function showGame(opts) {
       })));
       if (!g.isSolved()) kids.push(button('Keep drawing', () => { if (resultsD) resultsD.close(); resultsD = null; resultsCol = null; }, { size: 17 }));
     }
+    if (r && wantsRematch.size) {
+      const asks = [...wantsRematch].filter(p => p !== r.me).map(nameOf);
+      const t = wantsRematch.has(r.me) && !r.isHost ? 'Asked the host for another round…' : asks.length ? `${asks.join(', ')} ${asks.length === 1 ? 'wants' : 'want'} another round!` : '';
+      if (t) kids.push(text(t, { size: 15, color: 'inkSoft', cls: 'center' }));
+    }
     if (r) {
       kids.push(button(mpMode === Mode.COOP ? 'Play again' : 'Rematch', () => {
-        if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); setNote('Asked the host for another round…'); }
+        if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); wantsRematch.add(r.me); setNote('Asked the host for another round…'); fillResults(); }
       }, { size: 18, accent: 'accent' }));
       if (r.isHost) kids.push(button('Change board', nextBoardDialog, { size: 16 }));
     }
@@ -1368,6 +1407,7 @@ function showGame(opts) {
     let g = null;
     try { g = store.savedGame ? Game.load(store.savedGame) : null; } catch (e) { g = null; }
     mode = store.savedMode;
+    if (mode === 'daily' && g && !isTodaysDaily(g.puzzle)) mode = 'free'; // yesterday's daily doesn't count for today
     step = store.tutorialStep;
     const oldLesson = mode === 'tutorial' && (step < 0 || step >= Tutorial.steps.length || !g || g.puzzle.encode(false) !== Tutorial.puzzle(step).encode(false));
     if (oldLesson) startTutorial(Math.max(0, Math.min(Tutorial.steps.length - 1, step)));
@@ -1448,7 +1488,16 @@ function openLinkUrl(url) {
     if (screen && screen.name === 'game') { leaveGame(); setTimeout(show, 250); } else show();
     return true;
   }
-  return false;
+  // A puzzle or room link that's been cut short or mangled: say so instead of quietly showing the menu.
+  store.seenIntro = true;
+  closeAllDialogs();
+  let d;
+  d = dialog(el('div', { class: 'col' },
+    text("That link didn't work", { size: 22, bold: true }),
+    text(l.join != null ? 'Room codes have 4 letters. Ask your friend for the code, then tap Play together and Join.'
+      : 'The puzzle code in it looks cut off. Ask your friend for the code, then tap Enter a code.', { size: 16, color: 'inkSoft' }),
+    el('div', { class: 'gap14' }, button('OK', () => d.close(), { size: 17 }))));
+  return true;
 }
 
 if (document.fonts && document.fonts.load) {

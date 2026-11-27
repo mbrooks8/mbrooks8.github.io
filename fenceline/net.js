@@ -190,14 +190,32 @@ export class Link {
     return !!this.peer;
   }
 
-  /** Dials terms from..to of a room at once; the newest host that answers wins. */
+  /**
+   * Dials terms from..to of a room at once; the newest host that answers wins. Missing ids only
+   * fail after the signalling server's ~5 s timeout, so once one host answers we wait just a moment
+   * for a newer one instead of waiting for every miss.
+   */
   async dialNewest(room, from, to, timeout) {
     if (!this.peer || !this.peer.open) return null;
-    const tries = [];
-    for (let t = Math.max(0, from); t <= to; t++) tries.push(this.dial(hostId(room, t), timeout).then((conn) => ({ conn, t }), () => null));
-    const got = (await Promise.all(tries)).filter(Boolean).sort((a, b) => b.t - a.t);
-    for (const g of got.slice(1)) try { g.conn.close(); } catch (_) {}
-    return got[0] || null;
+    const got = [];
+    let decided = false, settle = null, left = 0, grace = 0;
+    const quiet = new Promise((resolve) => { settle = resolve; });
+    for (let t = Math.max(0, from); t <= to; t++) {
+      left++;
+      this.dial(hostId(room, t), timeout).then((conn) => {
+        if (decided) { try { conn.close(); } catch (_) {} return; } // answered too late
+        got.push({ conn, t });
+        if (t === to) settle(); // the newest possible one: nothing to wait for
+        else if (!grace) grace = setTimeout(settle, 1200);
+      }, () => {}).finally(() => { if (--left === 0) settle(); });
+    }
+    if (!left) return null;
+    await quiet;
+    decided = true;
+    clearTimeout(grace);
+    const pick = got.slice().sort((a, b) => b.t - a.t)[0] || null;
+    for (const g of got) if (g !== pick) try { g.conn.close(); } catch (_) {}
+    return pick;
   }
 
   /**
