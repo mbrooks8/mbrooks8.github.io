@@ -864,6 +864,8 @@ function showGame(opts) {
   const nameOf = p => (room && p === room.me) ? 'You' : (room && room.names[p]) || 'Friend';
   const colorOf = p => pencilColor(room ? (room.pencils[p] || 0) : 0, theme.night);
   const boardLabelOf = (sh, w, h, d) => `${Boards.label(sh, w, h)} ${diffLabel(d)}`;
+  /** ★ marks whoever hosts right now (it moves when hosting moves). */
+  const star = p => (room && p === (room.isHost ? room.me : room.hostSeat) ? '★ ' : '');
   const dotLine = (p, label) => el('span', { class: 'pl' }, el('span', { class: 'dot', style: { color: colorOf(p) }, text: '● ' }), label);
 
   const linkUi = {
@@ -1068,7 +1070,7 @@ function showGame(opts) {
         kids.push(el('div', { class: 'roomcode' }, el('div', { class: 'lbl2', text: 'Room code' }), el('div', { class: 'big', text: r.roomId.toUpperCase() })));
         kids.push(button('Share invite', shareInvite, { size: 16 }));
       }
-      kids.push(el('div', { class: 'plist' }, ...r.players.map(p => dotLine(p, (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
+      kids.push(el('div', { class: 'plist' }, ...r.players.map(p => dotLine(p, star(p) + (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
       if (r.isHost) {
         const b = button('Start', () => { if (r.here.length >= 2) launchRound(); }, { size: 18, accent: 'accent' });
         b.classList.toggle('dim', !ready);
@@ -1179,7 +1181,7 @@ function showGame(opts) {
     if (mpMode === Mode.COOP) board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i)); // late joiners too
     const many = r.players.length > 4;
     playersText.replaceChildren(...r.players.map(p => {
-      const label = nameOf(p).slice(0, many ? 8 : 12) + (r.away[p] ? ' (away)' : '');
+      const label = star(p) + nameOf(p).slice(0, many ? 8 : 12) + (r.away[p] ? ' (away)' : '');
       return dotLine(p, mpMode === Mode.VERSUS ? `${label} ${Math.floor((progress.get(p) || 0) * 100)}%` : label);
     }));
   };
