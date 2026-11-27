@@ -70,6 +70,9 @@ export const store = {
 
   get savedGame() { return get('saved', null) || null; }, set savedGame(v) { set('saved', v); },
   get savedMode() { return get('savedMode', 'free') || 'free'; }, set savedMode(v) { set('savedMode', v); },
+  /** The unfinished game's timelapse so far (see timelapse.js), and the finished ones. */
+  get savedTimelapse() { return get('savedTl', null) || null; }, set savedTimelapse(v) { set('savedTl', v); },
+  get timelapses() { return get('timelapses', '') || ''; }, set timelapses(v) { set('timelapses', v); },
 
   solved(d) { return int('solved_' + d, 0); },
   best(size, d) { return int(`best_${size}_${d}`, 0); },
@@ -96,16 +99,16 @@ export const store = {
     return isBest;
   },
 
-  /** Solved puzzles, newest first: {code, ms, hints, date, kind}. */
+  /** Solved puzzles, newest first: {code, ms, hints, date, kind, tl} (tl: the timelapse id, if kept). */
   get history() {
     return (get('history', '') || '').split('\n').map(line => {
       const f = line.split('|');
       if (f.length < 5) return null;
-      return { code: f[0], ms: +f[1] || 0, hints: +f[2] || 0, date: f[3], kind: f[4] };
+      return { code: f[0], ms: +f[1] || 0, hints: +f[2] || 0, date: f[3], kind: f[4], tl: f[5] || '' };
     }).filter(Boolean);
   },
-  addHistory(code, ms, hints, kind) {
-    const line = `${code}|${ms}|${hints}|${today()}|${kind}`;
+  addHistory(code, ms, hints, kind, tl = '') {
+    const line = `${code}|${ms}|${hints}|${today()}|${kind}` + (tl ? `|${tl}` : '');
     const rest = (get('history', '') || '').split('\n').filter(l => l.trim()).slice(0, HISTORY_MAX - 1);
     set('history', [line, ...rest].join('\n'));
   },

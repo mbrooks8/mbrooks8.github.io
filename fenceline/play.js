@@ -20,7 +20,7 @@ export function createPlay(ctx) {
   let mpMode = opts.mpMode || Mode.VERSUS, mpW = opts.w || 7, mpH = opts.h || 7, mpDiff = opts.d || 'EASY', mpShape = opts.shape || Shape.SQUARE;
   let lobbyD = null, lobbyCol = null, lobbyStatus = '', resultsD = null, resultsCol = null;
   let countingDown = false, hostPuzzle = null, startWhenReady = false, lastSentProgress = -1, lastProgAt = 0, progTimer = 0;
-  let lastLocalEdit = -Infinity, round = 0, syncTimer = 0, countTimer = 0, roomCode = opts.code || '';
+  let lastLocalEdit = -Infinity, round = 0, syncTimer = 0, countTimer = 0, soonTimer = 0, soonLeft = 0, soonText = null, roomCode = opts.code || '';
   const nearby = opts.via === 'nearby'; // Android app, same room over Nearby (else online)
   const progress = new Map(), finished = new Map(); // finished: player -> [ms, hints, place]
   const wantsRematch = new Set(); // players who asked for another round
@@ -79,7 +79,7 @@ export function createPlay(ctx) {
           round = msg.round;
           startRound(p, same);
         } break;
-        case 'PING': board.showPing(msg.vertex, colorOf(msg.player)); play('ping'); setNote(`${nameOf(msg.player)} says: look here!`); break;
+        case 'PING': board.showPing(msg.vertex, colorOf(msg.player), msg.x, msg.y); play('ping'); setNote(`${nameOf(msg.player)} says: look here!`); break;
         case 'PROG': progress.set(msg.player, msg.fraction); updatePlayers(); fillResults(); break;
         case 'DONE':
           // Someone else got there first: a kind little "well played".
@@ -95,14 +95,13 @@ export function createPlay(ctx) {
           if (coop && coop.apply(msg)) { if (msg.t === 'MARK') play('friend'); board.invalidate(); refresh(); }
           break;
         case 'REMATCH': {
-          // Start again right away only when nobody is still drawing; otherwise the host decides.
+          // Round over: the next one starts by itself in a few seconds, so the host still has time to change
+          // the board. Someone still drawing: the host decides.
           const roundOver = mpMode === Mode.COOP ? !!(ctx.game && ctx.game.isSolved()) : r.here.every(p => finished.has(p));
-          if (r.isHost && roundOver) launchRound();
-          else {
-            wantsRematch.add(msg.player);
-            setNote(`${nameOf(msg.player)} wants another round!`);
-            if (resultsCol) fillResults();
-          }
+          wantsRematch.add(msg.player);
+          setNote(`${nameOf(msg.player)} wants another round!`);
+          if (r.isHost && roundOver) startSoon();
+          if (resultsCol) fillResults();
           break;
         }
       }
@@ -283,9 +282,26 @@ export function createPlay(ctx) {
     col.replaceChildren(...kids);
   };
 
+  /** Host: someone asked for another round. Count down, so there's still time to tap Change board. */
+  const NEXT_IN = 10;
+  const startSoon = () => {
+    if (soonTimer) return;
+    soonLeft = NEXT_IN;
+    const tick = () => {
+      if (ctx.disposed) return;
+      if (soonLeft <= 0) { soonTimer = 0; launchRound(); return; }
+      if (soonText) soonText.textContent = `Next game in ${soonLeft}…`;
+      soonLeft--;
+      soonTimer = setTimeout(tick, 1000);
+    };
+    tick();
+  };
+  const stopSoon = () => { clearTimeout(soonTimer); soonTimer = 0; if (soonText) soonText.textContent = ''; };
+
   /** Host: start a round with the prepared puzzle (or as soon as it's ready). */
   const launchRound = () => {
     const r = room;
+    stopSoon();
     if (!r || !r.isHost) return;
     const p = hostPuzzle;
     if (!p) {
@@ -315,7 +331,7 @@ export function createPlay(ctx) {
       const send = g.onLocalChange;
       g.onLocalChange = (e, v, h) => { lastLocalEdit = performance.now(); if (send) send(e, v, h); };
       board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i)); board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i));
-      board.onPing = v => { board.showPing(v, colorOf(r.me)); if (room) room.broadcast({ t: 'PING', player: room.me, vertex: v }); };
+      board.onPing = (v, x, y) => { board.showPing(v, colorOf(r.me), x, y); if (room) room.broadcast({ t: 'PING', player: room.me, vertex: v, x, y }); };
     } else {
       board.ownerColors = null; board.ownerStyles = null;
       board.onPing = null;
@@ -451,11 +467,13 @@ export function createPlay(ctx) {
       const t = wantsRematch.has(r.me) && !r.isHost ? 'Asked the host for another round…' : asks.length ? `${asks.join(', ')} ${asks.length === 1 ? 'wants' : 'want'} another round!` : '';
       if (t) kids.push(text(t, { size: 15, color: 'inkSoft', cls: 'center' }));
     }
+    soonText = text(soonTimer ? `Next game in ${soonLeft + 1}…` : '', { size: 17, bold: true, color: 'accent', cls: 'center' });
+    if (soonTimer) kids.push(soonText);
     if (r) {
       kids.push(button(mpMode === Mode.COOP ? 'Play again' : 'Rematch', () => {
         if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); wantsRematch.add(r.me); setNote('Asked the host for another round…'); fillResults(); }
       }, { size: 20, kind: 'primary' }));
-      if (r.isHost) kids.push(button('Change board', nextBoardDialog, { size: 16 }));
+      if (r.isHost) kids.push(button('Change board', () => { stopSoon(); nextBoardDialog(); }, { size: 16 }));
     }
     kids.push(button('Leave', () => leaveGame(), { size: 16 }));
     col.replaceChildren(...kids);
@@ -534,7 +552,7 @@ export function createPlay(ctx) {
       document.removeEventListener('visibilitychange', onWake);
       for (const t of leftTimers.values()) clearTimeout(t);
       clearTimeout(awayTimer);
-      clearTimeout(syncTimer); clearTimeout(countTimer); clearTimeout(progTimer);
+      clearTimeout(syncTimer); clearTimeout(countTimer); clearTimeout(progTimer); clearTimeout(soonTimer);
       if (coop) coop.detach();
       if (link) link.close();
       link = null; room = null;

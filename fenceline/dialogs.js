@@ -13,6 +13,8 @@ import { SHARE_BASE, shareText, defaultName, GROUP_SIZES, diffLabel, cap, factor
 import { shapeChip } from './shapes.js';
 import { thumb } from './thumb.js';
 import { openGame } from './app.js';
+import { replayDialog } from './replay.js';
+import { timelapseIds } from './timelapse.js';
 
 const FIRST = 5; // sizes shown before "more"
 
@@ -161,6 +163,7 @@ export function statsDialog() {
   const items = store.history;
   if (!items.length) kids.push(text('Solved puzzles will show up here.', { size: 16, color: 'inkSoft', cls: 'center' }));
   let thumbs = 0;
+  const watchable = timelapseIds();
   for (const hh of items) {
     const code = PuzzleCode.find(hh.code);
     if (!code) continue;
@@ -173,13 +176,16 @@ export function statsDialog() {
       factory.gen('thumb', code.width, code.height, code.difficulty, code.seed, code.shape)
         .then(p => pic.replaceChildren(thumb(p, { faded: false })), () => {});
     }
+    // Watch it again: the timelapse of every move (kept for the newest games).
+    const watch = watchable.has(hh.tl) ? el('button', { type: 'button', 'aria-label': 'Watch ' + what }, icon('play', 22)) : null;
+    if (watch) watch.addEventListener('click', () => replayDialog(hh));
     const replay = el('button', { type: 'button', 'aria-label': 'Play ' + what + ' again' }, icon('restart', 22));
     replay.addEventListener('click', () => { d.close(); openGame({ mode: 'code', code: code.toString() }); });
     const share = el('button', { type: 'button', 'aria-label': 'Share ' + what }, icon('share', 22));
     share.addEventListener('click', () => shareText(`Try this ${board} Fenceline puzzle! I did it in ${formatTime(hh.ms)}.\n${SHARE_BASE}${code}\nCode: ${code}`, s => { note.textContent = s; }));
     kids.push(el('div', { class: 'rowitem' }, pic,
       el('div', { class: 'grow' }, what, el('span', { class: 'sub', text: `${shortDate(hh.date)} · ${formatTime(hh.ms)}${hints}` })),
-      el('div', { class: 'acts' }, replay, share)));
+      el('div', { class: 'acts' }, ...(watch ? [watch] : []), replay, share)));
   }
   kids.push(note);
   d = dialog(el('div', { class: 'col', style: 'gap:6px' }, ...kids));

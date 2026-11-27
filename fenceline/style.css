@@ -105,6 +105,14 @@ a { color: var(--accent); }
 }
 .codein::placeholder { color: var(--inkSoft); }
 canvas.mini { width: 100%; height: 190px; display: block; touch-action: none; }
+/* Timelapse card (Stats history): the board, then play / scrub line / clock. */
+.replaycard .boardframe { flex: none; position: relative; width: min(78vw, 380px); height: min(78vw, 380px, 52vh); margin: 0 auto; }
+canvas.replay { width: 100%; height: 100%; display: block; touch-action: none; }
+.replaybar { display: flex; align-items: center; gap: 10px; }
+.replaybar .tool { flex: none; min-width: 0; }
+.replaybar .tool .ring { width: 48px; height: 48px; }
+canvas.scrub { flex: 1; height: 28px; min-width: 60px; touch-action: none; cursor: pointer; }
+.replaybar .clock { min-width: 3.2em; text-align: right; font-size: 17px; color: var(--inkSoft); font-variant-numeric: tabular-nums; }
 
 /* ---- game ---- */
 .game {

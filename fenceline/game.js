@@ -10,11 +10,14 @@ import { Mode } from './room.js';
 import { play } from './sound.js';
 import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, JOIN_BASE, factory, isAndroid, keepAwake } from './common.js';
 import { createPlay } from './play.js';
+import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
 import { leaveGame, setScreen, showMenu } from './app.js';
 
 export function showGame(opts) {
   let mode = opts.mode, step = opts.step || 0;
   let game = null, resumedAt = 0, winShown = false, pendingFix = null, guide = [], guideAt = 0, disposed = false;
+  // Every move, for the timelapse in Stats (timelapse.js). resumeTl: the saved one, when continuing.
+  let rec = null, resumeTl = null;
   const hintsOff = () => store.noHints && mode !== 'tutorial';
 
   // Layout.
@@ -45,7 +48,7 @@ export function showGame(opts) {
     return b;
   };
   // A finished puzzle stays finished: undo would un-solve a win that is already counted.
-  const undoBtn = tool('undo', '', 'Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); });
+  const undoBtn = tool('undo', '', 'Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); track(); game.undo(); track(Kind.UNDO); board.clearHighlights(); pendingFix = null; refresh(); save(); });
   const redoBtn = tool('redo', '', 'Redo', () => { if (!game || game.isSolved()) return; if (game.canRedo) play('flick'); game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); });
   // Pen: Fence -> X -> Draw (drag from dot to dot) -> Fence.
   const penBtn = tool('pen', 'Fence', 'Pen: Fence', () => {
@@ -54,8 +57,8 @@ export function showGame(opts) {
     else board.crossPen = true;
     refresh();
   }, { kind: 'wash', cls: 'pen' });
-  // Co-op: Ping, then tap the board to point everyone at that dot.
-  const pingBtn = tool('ping', 'Ping', 'Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap a dot to show everyone.'); });
+  // Co-op: Ping, then tap anywhere on the board to point everyone at that spot.
+  const pingBtn = tool('ping', 'Ping', 'Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap anywhere to show everyone.'); });
   pingBtn.hidden = true;
   const bar = el('div', { class: 'bottombar tools' }, undoBtn, redoBtn, pingBtn, penBtn);
   const playersText = el('div', { class: 'players', hidden: true });
@@ -88,6 +91,8 @@ export function showGame(opts) {
   };
   const updateTimer = () => { if (!game) return; bankTime(); timerText.textContent = formatTime(game.elapsedMs); };
   const ticker = setInterval(updateTimer, 1000);
+  /** Writes down what changed on the board since last time (time = playing time, like the timer). */
+  const track = (kind = Kind.MOVE) => { if (rec && game) { bankTime(); rec.sample(game, game.elapsedMs, kind); } };
   const save = () => {
     if (!game) return;
     bankTime();
@@ -95,11 +100,12 @@ export function showGame(opts) {
     if (mode === 'mp') return;
     if (game.isSolved()) {
       const s = store.savedGame;
-      if (s && s.startsWith(game.puzzle.encode(true))) store.savedGame = null;
+      if (s && s.startsWith(game.puzzle.encode(true))) { store.savedGame = null; store.savedTimelapse = null; }
       return;
     }
     store.savedGame = game.saveString();
     store.savedMode = mode;
+    store.savedTimelapse = rec ? game.puzzle.encode(true) + '\n' + rec.encode() : null;
   };
   const onVis = () => {
     if (document.visibilityState === 'hidden') { save(); }
@@ -114,6 +120,7 @@ export function showGame(opts) {
 
   const refresh = () => {
     if (!game) return;
+    track();
     const over = game.isSolved();
     undoBtn.classList.toggle('dim', over || !game.canUndo);
     redoBtn.classList.toggle('dim', over || !game.canRedo);
@@ -132,6 +139,8 @@ export function showGame(opts) {
     board.locked = false;
     winShown = false;
     game = g;
+    rec = resumeTl && resumeTl.seen.length === g.grid.edgeCount ? resumeTl : new Recorder(g.grid.edgeCount);
+    resumeTl = null;
     g.autoCross = store.autoCross;
     applySettings();
     board.setGame(g);
@@ -344,11 +353,11 @@ export function showGame(opts) {
     // The win show (loop glow, shading, confetti, tune); the card waits for it.
     // Co-op confetti comes in everyone's pencil colours.
     board.confettiColors = mode === 'mp' && mp.mpMode === Mode.COOP && mp.room ? mp.room.players.map(mp.colorOf) : null;
-    const showMs = alreadyDone ? 0 : Math.max(1300, Math.min(3000, board.playSolved()));
+    const showMs = alreadyDone ? 0 : Math.max(1300, Math.min(5000, board.playSolved()));
     const code = PuzzleCode.of(g.puzzle);
     const daily = mode === 'daily' && isTodaysDaily(g.puzzle); // a daily finished after midnight is just a puzzle
     const kind = daily ? 'daily' : mode !== 'mp' ? '' : mp.mpMode === Mode.COOP ? 'coop' : 'versus';
-    if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind);
+    if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind, keepRecording(g));
     if (mode === 'mp') { if (!alreadyDone) board.buzz(40); mp.mpSolved(g, showMs); return; }
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
@@ -356,6 +365,19 @@ export function showGame(opts) {
     store.savedGame = null;
     if (!alreadyDone) board.buzz(40);
     setTimeout(() => { if (!disposed) showWin(g, best); }, showMs);
+  };
+
+  /** Keeps this game's timelapse (co-op: with everyone's pencil and name); returns its id for the history. */
+  const keepRecording = g => {
+    if (!rec || !rec.moves.length) return '';
+    rec.sample(g, g.elapsedMs);
+    const r = mp.room;
+    if (mode === 'mp' && mp.shared() && r) {
+      for (const p of new Set(rec.moves.map(m => m.player))) rec.setPlayer(p, r.pencils[p] || 0, p === r.me ? (store.playerName || r.names[p]) : r.names[p]);
+    }
+    const id = newTimelapseId();
+    try { keepTimelapse(id, rec.encode()); } catch (e) { return ''; }
+    return id;
   };
 
   /** The win card: a taped card at the bottom, so the shaded loop stays in view above it. */
@@ -429,6 +451,8 @@ export function showGame(opts) {
   if (mode === 'continue') {
     let g = null;
     try { g = store.savedGame ? Game.load(store.savedGame) : null; } catch (e) { g = null; }
+    const tl = store.savedTimelapse, key = g ? g.puzzle.encode(true) + '\n' : null;
+    if (g && tl && tl.startsWith(key)) { try { resumeTl = Recorder.decode(tl.slice(key.length), g.grid.edgeCount); } catch (e) { resumeTl = null; } }
     mode = store.savedMode;
     if (mode === 'daily' && g && !isTodaysDaily(g.puzzle)) mode = 'free'; // yesterday's daily doesn't count for today
     step = store.tutorialStep;

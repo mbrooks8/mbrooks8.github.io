@@ -26,7 +26,7 @@ export const Msg = {
       case 'DONE': return `DONE\t${m.player}\t${m.ms}\t${m.hints}\t${m.place || 0}`;
       case 'MARK': return `MARK\t${m.player}\t${m.edge}\t${m.value}\t${m.hint ? 1 : 0}`;
       case 'STATE': return `STATE\t${m.board}`;
-      case 'PING': return `PING\t${m.player}\t${m.vertex}`;
+      case 'PING': return `PING\t${m.player}\t${m.vertex}` + (m.x != null && m.y != null ? `\t${+m.x.toFixed(3)}\t${+m.y.toFixed(3)}` : '');
       case 'REMATCH': return `REMATCH\t${m.player}`;
       case 'LEFT': return `LEFT\t${m.player}`;
     }
@@ -54,7 +54,13 @@ export const Msg = {
         case 'DONE': return { t: 'DONE', player: int(f[1]), ms: int(f[2]), hints: int(f[3]), place: f[4] != null ? int(f[4]) : 0 };
         case 'MARK': return { t: 'MARK', player: int(f[1]), edge: int(f[2]), value: int(f[3]), hint: f[4] === '1' };
         case 'STATE': return { t: 'STATE', board: f[1] };
-        case 'PING': return { t: 'PING', player: int(f[1]), vertex: int(f[2]) };
+        case 'PING': {
+          // The exact spot (x, y in edge lengths) follows the nearest dot; 1.x phones send only the dot.
+          const x = parseFloat(f[3]), y = parseFloat(f[4]);
+          const m = { t: 'PING', player: int(f[1]), vertex: int(f[2]) };
+          if (Number.isFinite(x) && Number.isFinite(y)) { m.x = x; m.y = y; }
+          return m;
+        }
         case 'REMATCH': return { t: 'REMATCH', player: int(f[1]) };
         case 'LEFT': return { t: 'LEFT', player: int(f[1]) };
       }
