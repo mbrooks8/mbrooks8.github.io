@@ -24,6 +24,7 @@ export function yesterday() { const d = new Date(); d.setDate(d.getDate() - 1); 
 export const HISTORY_MAX = 200;
 const DIFFS = ['EASY', 'MEDIUM', 'HARD'];
 
+let memInstallId = null;
 export const store = {
   get autoCross() { return bool('autoCross', false); }, set autoCross(v) { set('autoCross', v); },
   get showErrors() { return bool('showErrors', true); }, set showErrors(v) { set('showErrors', v); },
@@ -57,8 +58,10 @@ export const store = {
   get playerName() { return (get('playerName', '') || '').slice(0, 20); }, set playerName(v) { set('playerName', String(v || '').slice(0, 20)); },
   /** Random id for this browser, so a host can give a returning player their seat back. */
   get installId() {
-    let id = get('installId', null);
+    // Kept in memory too, so it stays the same for this visit even where storage is blocked.
+    let id = memInstallId || get('installId', null);
     if (!id) { id = Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 8); set('installId', id); }
+    memInstallId = id;
     return id;
   },
 
