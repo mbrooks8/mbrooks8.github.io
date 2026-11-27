@@ -161,7 +161,7 @@ function rulesDialog() {
       el('li', { text: 'Squares without a number can have any count.' }),
       el('li', { text: 'Every dot has two fence pieces touching it, or none. So the fence never stops, splits or crosses.' }),
       el('li', { text: "There's only one fence, and it goes all the way around." })),
-    text('Tap the gap between two dots to draw a fence. Tap again for an X (a gap that stays empty), and once more to clear it. Long-press also makes an X. Pinch to zoom, drag to move.', { size: 16 }),
+    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty). Pinch to zoom, drag to move.', { size: 16 }),
     el('div', { class: 'gap16' }, button('Got it', () => d.close())),
   );
   d = dialog(col);
@@ -389,7 +389,7 @@ function historyDialog() {
 function playTogetherDialog() {
   let d;
   const col = el('div', { class: 'col' });
-  let coop = false;
+  let coop = true; // co-op first (Michael)
   let shape = store.lastShape;
   let size = store.lastSize;
   let diff = store.lastDifficulty;
@@ -532,8 +532,7 @@ function showGame(opts) {
   const boardFrame = el('div', { class: 'boardframe' }, canvas, loading);
   const undoBtn = button('Undo', () => { game && game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
   const redoBtn = button('Redo', () => { game && game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
-  const penBtn = button('Pen: Fence', () => { board.crossPen = !board.crossPen; refresh(); }, { size: 16 });
-  const bar = el('div', { class: 'row bottombar' }, undoBtn, redoBtn, penBtn);
+  const bar = el('div', { class: 'row bottombar' }, undoBtn, redoBtn);
   const playersText = el('div', { class: 'players', hidden: true });
   const root = el('div', { class: 'game' }, top, playersText, appLink, note, boardFrame, bar);
 
@@ -590,7 +589,6 @@ function showGame(opts) {
     if (!game) return;
     undoBtn.classList.toggle('dim', !game.canUndo);
     redoBtn.classList.toggle('dim', !game.canRedo);
-    setLabel(penBtn, board.crossPen ? 'Pen: X' : 'Pen: Fence');
     board.invalidate();
     if (mode === 'mp') sendProgress(game);
     if (game.isSolved() && !winShown) onSolved(false);
@@ -673,7 +671,7 @@ function showGame(opts) {
       text('Join the dots into one closed fence. Each number tells how many of its 4 sides are fence.', { size: 16 }),
       mini,
       text('A finished puzzle: one fence that goes all the way around, and every number matches. Each dot has two fence pieces, or none.', { size: 15, color: 'inkSoft' }),
-      text('Tap the gap between two dots to draw a fence. Tap it again for an X, a gap you know stays empty.', { size: 16, cls: 'gap10' }),
+      text('Tap the gap between two dots to draw a fence. Press and hold a gap to mark it X, a gap you know stays empty.', { size: 16, cls: 'gap10' }),
       el('div', { class: 'gap14' }, button('Show me how', () => d.close(), { size: 18, accent: 'accent' })),
     );
     let mb = null;
@@ -751,6 +749,10 @@ function showGame(opts) {
       const n = game ? game.clearMistakes() : 0;
       setNote(n === 0 ? 'No mistakes!' : `Erased ${n} mark${n === 1 ? '' : 's'}.`);
       refresh(); save();
+    });
+    if (mode === 'mp' && room && !nearby && room.roomId) item('Invite friends', () => {
+      const c = room.roomId.toUpperCase();
+      shareText(`Join my Fenceline game!\n${JOIN_BASE}${c}\nRoom code: ${c}`, setNote);
     });
     if (mode !== 'tutorial' && game && PuzzleCode.of(game.puzzle)) {
       item('Share puzzle', () => sharePuzzle(null));
@@ -840,7 +842,11 @@ function showGame(opts) {
 
   const shared = () => mode === 'mp' && mpMode === Mode.COOP && !!room;
   // "X left, Y hosts now" stays readable while people reconnect right after it.
-  let hostNote = '', hostNoteAt = -1e9;
+  let hostNote = '', hostNoteAt = -1e9, statusNote = '';
+  const leftTimers = new Map(), toldLeft = new Set();
+  let wokeAt = -1e9;
+  const onWake = () => { if (document.visibilityState !== 'hidden') wokeAt = performance.now(); };
+  document.addEventListener('visibilitychange', onWake);
   const moveNote = t => { hostNote = t; hostNoteAt = performance.now(); setNote(t); };
   const laterNote = t => setNote(performance.now() - hostNoteAt < 6000 ? `${hostNote} ${t}` : t);
   const isHost = () => !!(room && room.isHost);
@@ -887,7 +893,15 @@ function showGame(opts) {
       }
     },
     onPlayerLeft(r, player) {
-      if (game) setNote(`${nameOf(player)} dropped out. They can join again.`);
+      // Phones drop out for a moment all the time (screen off, app switch). Only say so if they stay gone.
+      // (And if this phone was the one asleep, the others are just finding it again.)
+      clearTimeout(leftTimers.get(player));
+      const later = () => leftTimers.set(player, setTimeout(() => {
+        if (document.visibilityState === 'hidden' || performance.now() - wokeAt < 10000) { later(); return; }
+        leftTimers.delete(player);
+        if (game && room && room.away[player]) { setNote(`${nameOf(player)} dropped out. They can join again.`); toldLeft.add(player); }
+      }, 10000));
+      later();
       progress.delete(player);
       updatePlayers(); fillResults();
     },
@@ -914,7 +928,8 @@ function showGame(opts) {
     },
     onJoinRequest(r, peer, name, returning) { askToJoin(r, peer, name, returning); },
     onJoined(r, player, returning) {
-      laterNote(`${nameOf(player)} ${returning ? 'is back' : 'joined'}!`);
+      clearTimeout(leftTimers.get(player)); leftTimers.delete(player);
+      if (!returning || toldLeft.delete(player)) laterNote(`${nameOf(player)} ${returning ? 'is back' : 'joined'}!`);
       if (mpMode === Mode.COOP && coop) coop.syncAll(); // catch them up on the shared board
       updatePlayers(); fillResults();
     },
@@ -922,7 +937,10 @@ function showGame(opts) {
     onHostsChanged() { fillLobby(); },
     onError(t) { lobbyStatus = t; fillLobby(); if (!lobbyD) setNote(t); },
     onStatus(t) {
-      if (game && mode === 'mp') { if (t) laterNote(t); }
+      if (game && mode === 'mp') {
+        if (t) { laterNote(t); statusNote = noteText.textContent; }
+        else if (statusNote && noteText.textContent === statusNote) { setNote(''); statusNote = ''; }
+      }
       else { lobbyStatus = t; fillLobby(); }
     },
   };
@@ -952,6 +970,7 @@ function showGame(opts) {
   const openLink = async role => {
     link = nearby ? new NearbyLink() : new Link();
     link.ui = linkUi;
+    if (window.__fenceline) window.__fenceline.link = link;
     lobbyStatus = nearby ? 'Starting Nearby…' : role === 'host' ? 'Making a room…' : `Looking for room ${roomCode.toUpperCase()}…`;
     showLobby();
     const myLink = link;
@@ -1244,6 +1263,8 @@ function showGame(opts) {
     save();
     clearInterval(ticker);
     document.removeEventListener('visibilitychange', onVis);
+    document.removeEventListener('visibilitychange', onWake);
+    for (const t of leftTimers.values()) clearTimeout(t);
     window.removeEventListener('pagehide', save);
     onThemeChange.delete(onTheme);
     clearTimeout(syncTimer); clearTimeout(countTimer); clearTimeout(progTimer);

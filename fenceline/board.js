@@ -17,7 +17,6 @@ export class BoardView {
     this.showErrors = true;
     this.haptics = true;
     this.plainNumbers = false;
-    this.crossPen = false;
     this.locked = false;
     this.onChanged = null;
     this.guideEdges = new Set();
@@ -348,8 +347,9 @@ export class BoardView {
     const edge = this.edgeAt(x, y);
     if (edge < 0) return;
     if (this.onlyGuided && !this.guideEdges.has(edge)) { this.onOffGuide && this.onOffGuide(); return; }
-    if (long || this.crossPen) gm.setMark(edge, gm.marks[edge] === Edge.CROSS ? Edge.UNKNOWN : Edge.CROSS);
-    else gm.cycle(edge);
+    // Tap draws a fence or clears the gap; long-press makes an X (or clears it).
+    if (long) gm.setMark(edge, gm.marks[edge] === Edge.CROSS ? Edge.UNKNOWN : Edge.CROSS);
+    else gm.setMark(edge, gm.marks[edge] === Edge.UNKNOWN ? Edge.LINE : Edge.UNKNOWN);
     this.buzz(long ? 25 : 8);
     this.clearHighlights();
     this.onChanged && this.onChanged();
