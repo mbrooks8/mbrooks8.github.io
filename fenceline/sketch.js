@@ -1,14 +1,18 @@
 // Coloured-pencil drawing on canvas: palette, paper, pencil strokes and hand-drawn boxes.
 // A port of the Android app's Sketch.kt.
 
+// Pencils chosen to stay tellable apart with colour blindness too (red-green and blue-yellow).
 export const PENCILS = [
   ['Terracotta', '#B5533C'],
-  ['Indigo', '#3D5A98'],
-  ['Forest', '#4E7D4A'],
-  ['Plum', '#7E4A7E'],
+  ['Indigo', '#2F4FA0'],
+  ['Ochre', '#D09C30'],
+  ['Rose', '#C467A6'],
   ['Graphite', '#4A4641'],
 ];
-const PENCILS_NIGHT = ['#E59A7E', '#9FB6E8', '#9CCB8F', '#D1A3D1', '#E2DCD2'];
+// The 6 colours players get, in seat order (the 5 pencils above, then Sky).
+const PLAYER_DAY = ['#B5533C', '#2F4FA0', '#D09C30', '#C467A6', '#4A4641', '#48A4D8'];
+const PLAYER_NIGHT = ['#F08A5D', '#6F93F2', '#F0CF5E', '#F2A2C8', '#E2DCD2', '#93E3F5'];
+const STYLES = ['solid', 'dashed', 'dotted'];
 
 export const DAY = {
   paper: '#F5EDDC', paperShade: '#EDE2CC', ink: '#4A4641', inkSoft: '#9A8F80', done: '#6A9A5B',
@@ -19,17 +23,34 @@ export const NIGHT = {
   error: '#F08A7A', hint: '#F2C45A', ruling: 'rgba(63,110,156,0.133)', card: '#35302A',
 };
 
+/** Pencil colour for a pencil number. Past 6 the colours repeat (with a new line style, see pencilStyle);
+ *  past 18 they also get a shade darker (day) or lighter (night). */
 export function pencilColor(index, night) {
-  if ((index | 0) >= PENCILS.length) return extraPencil((index | 0) - PENCILS.length, night);
   const i = Math.max(0, index | 0);
-  return night ? PENCILS_NIGHT[i] : PENCILS[i][1];
+  const c = (night ? PLAYER_NIGHT : PLAYER_DAY)[i % 6];
+  const round = Math.floor(i / 18);
+  return round % 2 ? blend(c, night ? '#FFFFFF' : '#000000', 0.3) : c;
 }
 
-/** Extra pencil colours for big groups: hues spread by the golden angle, in the same soft tone (as on Android). */
-function extraPencil(k, night) {
-  const h = (25 + 137.5 * (k + 1)) % 360, s = night ? 0.38 : 0.55, v = night ? 0.88 : 0.62;
-  const f = n => { const kk = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(kk, 4 - kk, 1)); };
-  return '#' + [f(5), f(3), f(1)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+/** Line style for a pencil number: solid for the first 6 players, then dashed, then dotted. */
+export function pencilStyle(index) {
+  return STYLES[Math.floor(Math.max(0, index | 0) / 6) % 3];
+}
+
+/** A small swatch of a player's line (colour and style), for name lists. */
+export function pencilSwatch(index, night) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 10'); svg.setAttribute('width', '24'); svg.setAttribute('height', '10');
+  svg.setAttribute('class', 'swatch'); svg.setAttribute('aria-hidden', 'true');
+  const line = document.createElementNS(ns, 'line');
+  line.setAttribute('x1', '3'); line.setAttribute('y1', '5'); line.setAttribute('x2', '21'); line.setAttribute('y2', '5');
+  line.setAttribute('stroke', pencilColor(index, night)); line.setAttribute('stroke-width', '4'); line.setAttribute('stroke-linecap', 'round');
+  const st = pencilStyle(index);
+  if (st === 'dashed') line.setAttribute('stroke-dasharray', '5 4');
+  if (st === 'dotted') line.setAttribute('stroke-dasharray', '2 4');
+  svg.appendChild(line);
+  return svg;
 }
 
 /** Small seeded random numbers, so a stroke looks the same on every frame. */

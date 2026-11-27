@@ -139,6 +139,7 @@ canvas.board {
 /* ---- play together ---- */
 .players { font-size: 15px; padding: 0 14px; display: flex; flex-wrap: wrap; gap: 2px 14px; -webkit-text-stroke: .3px currentColor; }
 .pl { white-space: nowrap; }
+.swatch { vertical-align: middle; margin-right: 5px; }
 .plist { display: flex; flex-direction: column; gap: 4px; font-size: 17px; }
 .plist.center { align-items: center; }
 .roomcode { text-align: center; margin: 4px 0 2px; }

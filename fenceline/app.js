@@ -7,7 +7,7 @@ import { Shape, Edge, Grid, Puzzle, PuzzleCode, PuzzleGenerator, Game, Tutorial,
 import { store, formatTime } from './store.js';
 import { theme, applyTheme, onThemeChange, el, text, button, chip, row, dialog, sk, setLabel, closeTopDialog, closeAllDialogs, topDialog, redrawBoxes } from './ui.js';
 import { BoardView } from './board.js';
-import { PENCILS, pencilColor, pencilLine } from './sketch.js';
+import { PENCILS, pencilColor, pencilLine, pencilStyle, pencilSwatch } from './sketch.js';
 import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
 import { Link, cleanCode } from './net.js';
 import { NearbyLink } from './nearby.js';
@@ -132,7 +132,7 @@ function settingsDialog(onDone) {
       ...(canKeepAwake() ? [toggle('Keep screen on', 'keepAwake')] : []),
       text('Challenge', { size: 17, bold: true, cls: 'gap14' }),
       toggle('No hints', 'noHints'),
-      toggle('Plain numbers (no glow when done)', 'plainNumbers'),
+      toggle('Plain numbers (no tick when done)', 'plainNumbers'),
       text('Pencil', { size: 17, bold: true, cls: 'gap14' }),
       row(...PENCILS.map(([name], i) => {
         const c = chip(name.slice(0, 5), store.pencil === i, () => { store.pencil = i; applyTheme(); build(); }, { size: 12 });
@@ -869,10 +869,11 @@ function showGame(opts) {
   const isHost = () => !!(room && room.isHost);
   const nameOf = p => (room && p === room.me) ? 'You' : (room && room.names[p]) || 'Friend';
   const colorOf = p => pencilColor(room ? (room.pencils[p] || 0) : 0, theme.night);
+  const styleOf = p => pencilStyle(room ? (room.pencils[p] || 0) : 0);
   const boardLabelOf = (sh, w, h, d) => `${Boards.label(sh, w, h)} ${diffLabel(d)}`;
   /** ★ marks whoever hosts right now (it moves when hosting moves). */
   const star = p => (room && p === (room.isHost ? room.me : room.hostSeat) ? '★ ' : '');
-  const dotLine = (p, label) => el('span', { class: 'pl' }, el('span', { class: 'dot', style: { color: colorOf(p) }, text: '● ' }), label);
+  const dotLine = (p, label) => el('span', { class: 'pl' }, pencilSwatch(room ? (room.pencils[p] || 0) : 0, theme.night), label);
 
   const linkUi = {
     onLobby(r) {
@@ -1120,10 +1121,10 @@ function showGame(opts) {
       coop = new CoopBoard(g, r);
       const send = g.onLocalChange;
       g.onLocalChange = (e, v, h) => { lastLocalEdit = performance.now(); if (send) send(e, v, h); };
-      board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i));
+      board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i)); board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i));
       board.onPing = v => { board.showPing(v, colorOf(r.me)); if (room) room.broadcast({ t: 'PING', player: room.me, vertex: v }); };
     } else {
-      board.ownerColors = null;
+      board.ownerColors = null; board.ownerStyles = null;
       board.onPing = null;
       board.pingArmed = false;
     }
@@ -1184,7 +1185,10 @@ function showGame(opts) {
     const r = room;
     if (mode !== 'mp') return;
     if (!r) { playersText.replaceChildren('Playing solo'); return; }
-    if (mpMode === Mode.COOP) board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i)); // late joiners too
+    if (mpMode === Mode.COOP) { // late joiners too
+      board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i));
+      board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i));
+    }
     const many = r.players.length > 4;
     playersText.replaceChildren(...r.players.map(p => {
       const label = star(p) + nameOf(p).slice(0, many ? 8 : 12) + (r.away[p] ? ' (away)' : '');
