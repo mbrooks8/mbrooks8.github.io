@@ -182,14 +182,16 @@ export class Room {
   returningSeat(hello) {
     if (!hello.id) return -1;
     const id = hello.id.slice(0, 24);
-    for (let i = 0; i < SEATS; i++) if (i !== this.me && this.seatIds[i] === id && this.away[i]) return i;
+    // The same device (same id) is coming back, even if its old connection hasn't timed out yet.
+    for (let i = 0; i < SEATS; i++) if (i !== this.me && this.seatIds[i] === id) return i;
     return -1;
   }
 
   hostReceive(peer, msg) {
     switch (msg.t) {
       case 'HELLO': {
-        if (this.peerPlayer.has(peer) || this.pending.has(peer)) return;
+        if (this.pending.has(peer)) return;
+        if (this.peerPlayer.has(peer)) { this.peerPlayer.delete(peer); this.seat(peer, msg); return; } // reconnected: catch it up again
         if (this.isFull) { this._send(peer, Msg.encode({ t: 'DENIED' })); return; }
         if (!this.started || this.returningSeat(msg) >= 0) { this.seat(peer, msg); return; }
         this.pending.set(peer, msg);
@@ -234,6 +236,7 @@ export class Room {
       if (seat < 0) for (let i = 0; i < SEATS; i++) if (i !== this.me && this.away[i]) { seat = i; break; }
       if (seat < 0) { this._send(peer, Msg.encode({ t: 'DENIED' })); return; }
     }
+    for (const [pp, s] of this.peerPlayer) if (s === seat && pp !== peer) this.peerPlayer.delete(pp); // its old, stale connection
     this.peerPlayer.set(peer, seat);
     this.names[seat] = (hello.name || '').trim() ? hello.name : `Friend ${seat}`;
     this.away[seat] = false;

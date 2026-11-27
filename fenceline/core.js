@@ -1386,8 +1386,8 @@ export const Tutorial = {
         }
         if (zeros.length) {
           const gaps = Array.from(g.cellEdges[zeros[0]]);
-          cross('A 0 means none of its sides are fence. Tap the glowing gap twice to mark it X.', gaps.slice(0, 1));
-          cross('Mark its other sides X too. (A long-press also makes an X.)', gaps.slice(1));
+          cross('A 0 means none of its sides are fence. Press and hold the glowing gap to mark it X.', gaps.slice(0, 1));
+          cross('Mark its other sides X too. Press and hold each one.', gaps.slice(1));
         }
         line('Now close the fence into one ring. Draw the glowing gaps.', allSol);
         break;

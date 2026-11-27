@@ -12,6 +12,14 @@ const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js
 const FIND_HOST_MS = 12000;
 /** How many terms to try when joining by code (hosting may have moved a few times). */
 const JOIN_TERMS = 6;
+/** How long a guest keeps trying its host (with the app open) before deciding the host has left. */
+const HOST_GRACE_MS = 10000;
+/** A guest that was away this long reconnects on return, even if the old channel looks open. */
+const STALE_MS = 30000;
+/** Signalling-server trouble: never shown mid-game; the link quietly reconnects. */
+const SIGNAL_ERRORS = new Set(['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected']);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
 
 let peerjsLoad = null;
 export function loadPeerJS() {
@@ -57,6 +65,18 @@ export class Link {
     this.ui = {};
     this.closed = false;
     this.findTimer = 0;
+    this.recovering = false; this.healing = false; this.healTimer = 0; this.hiddenAt = 0;
+    this.onVis = () => {
+      if (!visible()) { this.hiddenAt = Date.now(); return; }
+      const away = this.hiddenAt ? Date.now() - this.hiddenAt : 0;
+      this.hiddenAt = 0;
+      this.wake(away);
+    };
+    this.onOnline = () => this.wake(0);
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVis);
+    if (typeof window !== 'undefined') window.addEventListener('online', this.onOnline);
+    this.onPageHide = (e) => { if (!e.persisted) this.close(); };
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', this.onPageHide);
   }
 
   get code() { return this.room ? this.room.roomId.toUpperCase() : ''; }
@@ -97,6 +117,7 @@ export class Link {
     }
     if (!this.hostPeer) throw new Error("Couldn't make a room. Try again.");
     this.listen(this.hostPeer);
+    this.startHealing();
     return room;
   }
 
@@ -108,8 +129,147 @@ export class Link {
       conn.on('close', gone); conn.on('error', gone);
       watchIce(conn, gone);
     });
-    p.on('disconnected', () => { if (!this.closed) try { p.reconnect(); } catch (_) {} });
-    p.on('error', (e) => { if (e && e.type !== 'peer-unavailable') this.emit('onError', friendly(e).message); });
+    this.keepAlive(p, () => this.heal());
+  }
+
+  // ---- staying connected (phones sleep, switch networks, close the app for a bit) ----
+
+  /** Reconnects a peer to the signalling server whenever it drops, quietly, with backoff. */
+  keepAlive(p, onBack) {
+    let n = 0, t = 0, wasDown = false;
+    const retry = (now) => {
+      clearTimeout(t);
+      if (this.closed || p.destroyed || !p.disconnected) return;
+      t = setTimeout(() => {
+        if (this.closed || p.destroyed || !p.disconnected) return;
+        if (!visible()) return; // try again when the app is back
+        n++;
+        try { p.reconnect(); } catch (_) { /* already reconnecting */ }
+        retry(false); // check again later in case this attempt goes nowhere
+      }, now ? 0 : Math.min(8000, 500 * 2 ** n));
+    };
+    p._flRetry = () => { n = 0; retry(true); };
+    p.on('disconnected', () => { wasDown = true; retry(false); });
+    p.on('open', () => { n = 0; clearTimeout(t); if (wasDown) { wasDown = false; if (onBack) onBack(); } });
+    p.on('error', (e) => {
+      if (e && SIGNAL_ERRORS.has(e.type)) retry(false);
+      else if (e && e.type !== 'peer-unavailable') console.warn('play together:', e.type, e.message);
+    });
+  }
+
+  /** The app came back (or the network did): check every connection and mend what broke. */
+  wake(away) {
+    if (this.closed || !this.room) return;
+    for (const p of [this.peer, this.hostPeer]) if (p && !p.destroyed && p.disconnected && p._flRetry) p._flRetry();
+    const room = this.room;
+    if (room.isHost) { if (this.hostPeer && this.hostPeer.destroyed) this.reopenHost(); this.heal(); return; }
+    if (room.me < 0) return;
+    const c = this.hostConn;
+    const pc = c && c.peerConnection;
+    const healthy = c && c.open && pc && ['connected', 'completed', 'checking', 'new'].includes(pc.iceConnectionState);
+    if (!healthy || away > STALE_MS) {
+      if (c) { this.hostConn = null; try { c.close(); } catch (_) {} }
+      this.recover();
+    }
+  }
+
+  /** A peer we can dial from, connected to the signalling server (made again if it died). */
+  async ensurePeer() {
+    const p = this.peer;
+    if (p && !p.destroyed && p.open) return true;
+    if (p && !p.destroyed && p.disconnected) {
+      try { p.reconnect(); } catch (_) { /* already reconnecting */ }
+      if (await waitOpen(p, 5000)) return true;
+    }
+    try { if (p) p.destroy(); } catch (_) {}
+    this.peer = null;
+    const Peer = await loadPeerJS().catch(() => null);
+    if (!Peer || this.closed) return false;
+    this.peer = await openPeer(Peer).catch(() => null);
+    if (this.peer) this.keepAlive(this.peer);
+    return !!this.peer;
+  }
+
+  /** Dials terms from..to of a room at once; the newest host that answers wins. */
+  async dialNewest(room, from, to, timeout) {
+    if (!this.peer || !this.peer.open) return null;
+    const tries = [];
+    for (let t = Math.max(0, from); t <= to; t++) tries.push(this.dial(hostId(room, t), timeout).then((conn) => ({ conn, t }), () => null));
+    const got = (await Promise.all(tries)).filter(Boolean).sort((a, b) => b.t - a.t);
+    for (const g of got.slice(1)) try { g.conn.close(); } catch (_) {}
+    return got[0] || null;
+  }
+
+  /**
+   * Guest: the line to the host broke. Usually the host (or this phone) just slept for a moment,
+   * so find the host again quietly, and only if it's really gone hand hosting on (Room.moveHost).
+   */
+  async recover() {
+    if (this.recovering || this.closed) return;
+    const room = this.room;
+    if (!room || room.isHost) return;
+    if (room.me < 0 || !room.roomId) { room.disconnected('host'); return; }
+    this.recovering = true;
+    const shout = setTimeout(() => { if (this.recovering) this.emit('onStatus', 'Reconnecting…'); }, 3000);
+    let since = Date.now();
+    try {
+      while (!this.closed && !room.isHost && !this.hostConn) {
+        if (!visible()) { await untilVisible(); since = Date.now(); continue; }
+        await this.ensurePeer();
+        const got = await this.dialNewest(room.roomId, room.term, room.term + 3, 4000);
+        if (got) {
+          if (this.closed || room.isHost || this.hostConn) { try { got.conn.close(); } catch (_) {} return; }
+          if (got.t > room.term) room.term = got.t;
+          this.attachHost(got.conn);
+          return;
+        }
+        if (Date.now() - since > HOST_GRACE_MS) { room.disconnected('host'); return; }
+        await sleep(1500);
+      }
+    } finally {
+      clearTimeout(shout);
+      this.recovering = false;
+      this.emit('onStatus', '');
+    }
+  }
+
+  /** Host: check now and then that nobody took over hosting while we were away (a newer term). */
+  startHealing() {
+    clearInterval(this.healTimer);
+    this.healTimer = setInterval(() => {
+      const r = this.room;
+      if (visible() && r && r.isHost && r.players.some((p) => p !== r.me && r.away[p])) this.heal();
+    }, 10000);
+  }
+
+  async heal() {
+    const room = this.room;
+    if (this.healing || this.closed || !room || !room.isHost) return;
+    this.healing = true;
+    try {
+      if (!(await this.ensurePeer())) return;
+      const got = await this.dialNewest(room.roomId, room.term + 1, room.term + 3, 4000);
+      if (!got) return;
+      if (this.closed || !room.isHost) { try { got.conn.close(); } catch (_) {} return; }
+      // Someone hosts a newer term: the others moved on while we were away. Join them.
+      for (const c of this.conns.values()) try { c.close(); } catch (_) {}
+      this.conns.clear();
+      const hp = this.hostPeer; this.hostPeer = null;
+      try { if (hp) hp.destroy(); } catch (_) {}
+      room.isHost = false; room.term = got.t; room.waitingFor = -1;
+      room.peerPlayer.clear(); room.pending.clear();
+      this.attachHost(got.conn);
+      this.emit('onLobby', room);
+    } finally { this.healing = false; }
+  }
+
+  /** Host: our id on the signalling server died for good; take it again. */
+  async reopenHost() {
+    const room = this.room;
+    const Peer = await loadPeerJS().catch(() => null);
+    for (let i = 0; Peer && i < 8 && !this.closed && room.isHost && (!this.hostPeer || this.hostPeer.destroyed); i++) {
+      try { this.hostPeer = await openPeer(Peer, hostId(room.roomId, room.term)); this.listen(this.hostPeer); return; } catch (_) { await sleep(1500); }
+    }
   }
 
   // ---- joining ----
@@ -119,15 +279,12 @@ export class Link {
     const c = cleanCode(code);
     if (c.length !== 4) throw new Error('Room codes have 4 letters.');
     this.peer = await openPeer(Peer).catch((e) => { throw friendly(e); });
-    this.peer.on('disconnected', () => { if (!this.closed) try { this.peer.reconnect(); } catch (_) {} });
+    this.keepAlive(this.peer);
     // Hosting may have moved, so the room could be on a later term: try them all, newest answer wins.
-    const tries = [];
-    for (let t = 0; t < JOIN_TERMS; t++) tries.push(this.dial(hostId(c, t), 8000).then((conn) => ({ conn, t }), () => null));
-    const got = (await Promise.all(tries)).filter(Boolean).sort((a, b) => b.t - a.t);
-    if (!got.length) { this.peer.destroy(); throw new Error(`No room ${c.toUpperCase()} right now. Check the code with your friend.`); }
-    for (const g of got.slice(1)) try { g.conn.close(); } catch (_) {}
-    room.roomId = c; room.term = got[0].t;
-    this.attachHost(got[0].conn);
+    const got = await this.dialNewest(c, 0, JOIN_TERMS - 1, 8000);
+    if (!got) { this.peer.destroy(); this.peer = null; throw new Error(`No room ${c.toUpperCase()} right now. Check the code with your friend.`); }
+    room.roomId = c; room.term = got.t;
+    this.attachHost(got.conn);
     return room;
   }
 
@@ -147,8 +304,17 @@ export class Link {
 
   attachHost(conn) {
     this.hostConn = conn;
-    conn.on('data', (d) => { if (typeof d === 'string' && this.hostConn === conn) this.room.received('host', d); });
-    const gone = () => { if (this.hostConn !== conn || this.closed) return; this.hostConn = null; this.room.disconnected('host'); };
+    conn.on('data', (d) => {
+      if (typeof d !== 'string' || this.hostConn !== conn) return;
+      // The host saying goodbye (it left on purpose): hand hosting on right away, no waiting.
+      if (d === `LEFT\t${this.room.hostSeat}`) conn._flBye = true;
+      this.room.received('host', d);
+    });
+    const gone = () => {
+      if (this.hostConn !== conn || this.closed) return;
+      this.hostConn = null;
+      if (conn._flBye) this.room.disconnected('host'); else this.recover();
+    };
     conn.on('close', gone); conn.on('error', gone);
     watchIce(conn, gone);
     this.room.connected('host');
@@ -184,6 +350,7 @@ export class Link {
       try {
         this.hostPeer = await openPeer(Peer, hostId(room.roomId, room.term));
         this.listen(this.hostPeer);
+        this.startHealing();
         this.emit('onStatus', '');
         return;
       } catch (e) {
@@ -202,14 +369,37 @@ export class Link {
   }
 
   close() {
+    // Host leaving on purpose: tell everyone, so the next host takes over at once.
+    if (!this.closed && this.room && this.room.isHost) try { this.room.broadcast({ t: 'LEFT', player: this.room.me }); } catch (_) {}
     this.closed = true;
     clearTimeout(this.findTimer);
+    clearInterval(this.healTimer);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVis);
+    if (typeof window !== 'undefined') { window.removeEventListener('online', this.onOnline); window.removeEventListener('pagehide', this.onPageHide); }
     for (const c of this.conns.values()) try { c.close(); } catch (_) {}
     this.conns.clear();
     try { if (this.hostConn) this.hostConn.close(); } catch (_) {}
     try { if (this.hostPeer) this.hostPeer.destroy(); } catch (_) {}
     try { if (this.peer) this.peer.destroy(); } catch (_) {}
   }
+}
+
+function waitOpen(p, ms) {
+  return new Promise((resolve) => {
+    if (p.open) { resolve(true); return; }
+    const done = (v) => { clearTimeout(t); p.off('open', ok); resolve(v); };
+    const ok = () => done(true);
+    const t = setTimeout(() => done(false), ms);
+    p.on('open', ok);
+  });
+}
+
+function untilVisible() {
+  return new Promise((resolve) => {
+    if (visible()) { resolve(); return; }
+    const on = () => { if (visible()) { document.removeEventListener('visibilitychange', on); resolve(); } };
+    document.addEventListener('visibilitychange', on);
+  });
 }
 
 function safeSend(conn, text) { try { if (conn.open) conn.send(text); } catch (_) {} }
