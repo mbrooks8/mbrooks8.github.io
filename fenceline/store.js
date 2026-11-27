@@ -28,6 +28,7 @@ export const store = {
   get autoCross() { return bool('autoCross', false); }, set autoCross(v) { set('autoCross', v); },
   get showErrors() { return bool('showErrors', true); }, set showErrors(v) { set('showErrors', v); },
   get showTimer() { return bool('showTimer', true); }, set showTimer(v) { set('showTimer', v); },
+  get sound() { return bool('sound', true); }, set sound(v) { set('sound', v); },
   get haptics() { return bool('haptics', true); }, set haptics(v) { set('haptics', v); },
   get keepAwake() { return bool('keepAwake', true); }, set keepAwake(v) { set('keepAwake', v); },
   get noHints() { return bool('noHints', false); }, set noHints(v) { set('noHints', v); },

@@ -3,7 +3,7 @@
 const VERSION = 'fenceline-web-8';
 const FILES = [
   './', './index.html', './style.css', './app.js', './ui.js', './board.js', './sketch.js', './store.js',
-  './compat.js', './core.js', './worker.js', './room.js', './net.js', './native.js', './nearby.js', './manifest.webmanifest', './fonts/coming-soon.woff2',
+  './compat.js', './core.js', './worker.js', './room.js', './net.js', './native.js', './sound.js', './nearby.js', './manifest.webmanifest', './fonts/coming-soon.woff2',
   './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
 ];
 
