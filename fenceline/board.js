@@ -28,6 +28,7 @@ export class BoardView {
     this.onOffGuide = null;
     /** Co-op: pencil colour per player id; fences are drawn in their owner's colour. */
     this.ownerColors = null;
+    this.ownerStyles = null; // solid, dashed or dotted per seat (co-op)
     /** Co-op: long-pressing a dot calls this ("look here") instead of placing an X. */
     this.onPing = null;
     this.pings = [];
@@ -321,9 +322,17 @@ export class BoardView {
       } else {
         const len = Math.max(1, Math.hypot(x1 - x0, y1 - y0));
         const ix = (x1 - x0) / len * unit * 0.04, iy = (y1 - y0) / len * unit * 0.04;
-        const base = (this.ownerColors && gm.owner && this.ownerColors[gm.owner[e]]) || this.pencilColor;
+        const who = this.ownerColors && gm.owner ? gm.owner[e] : -1;
+        const base = (who >= 0 && this.ownerColors[who]) || this.pencilColor;
         const col = gm.hinted[e] ? blend(base, pal.hint, 0.45) : base;
-        pencilLine(ctx, x0 + ix, y0 + iy, x1 - ix, y1 - iy, col, lineW, e * 7919 + 3);
+        const style = (who >= 0 && this.ownerStyles && this.ownerStyles[who]) || 'solid';
+        const ax = x0 + ix, ay = y0 + iy, bx = x1 - ix, by = y1 - iy;
+        if (style === 'solid') pencilLine(ctx, ax, ay, bx, by, col, lineW, e * 7919 + 3);
+        else {
+          // Dashed or dotted, so players who share a colour still look different.
+          const parts = style === 'dashed' ? [[0, 0.38], [0.62, 1]] : [[0.17, 0.21], [0.48, 0.52], [0.79, 0.83]];
+          parts.forEach(([p, q], k) => pencilLine(ctx, ax + (bx - ax) * p, ay + (by - ay) * p, ax + (bx - ax) * q, ay + (by - ay) * q, col, lineW, e * 7919 + 3 + k));
+        }
       }
     }
 
@@ -388,9 +397,12 @@ export class BoardView {
     // Dots.
     const dotR = Math.max(2.5, unit * 0.055);
     for (let v = 0; v < g.vertexCount; v++) {
-      ctx.fillStyle = this.showErrors && gm.vertexError(v) ? pal.error : pal.ink;
+      const bad = this.showErrors && gm.vertexError(v);
+      ctx.fillStyle = bad ? pal.error : pal.ink;
       const j = (((v * 7) % 5) - 2) * 0.15;
       ctx.beginPath(); ctx.arc(this.sx(g, v) + j, this.sy(g, v) - j, dotR, 0, 6.2832); ctx.fill();
+      // A ring too, so a wrong dot doesn't rely on colour alone.
+      if (bad) pencilCircle(ctx, this.sx(g, v), this.sy(g, v), dotR * 2.6, pal.error, lineW * 0.5, v * 13 + 5);
     }
 
     // Clues.
@@ -401,14 +413,18 @@ export class BoardView {
       const k = gm.puzzle.clues[cell];
       if (k < 0) continue;
       const status = gm.clueStatus(cell);
-      let col = pal.ink, alpha = 1;
-      if (status === 'OVER' && this.showErrors) col = pal.error;
-      else if (status === 'DONE' && !this.plainNumbers) { col = pal.done; alpha = 200 / 255; }
-      ctx.fillStyle = rgba(col, alpha);
+      // Not colour alone (red/green is hard for many): a done number fades and gets a tick through it,
+      // and a number with too many fences gets circled.
+      const over = status === 'OVER' && this.showErrors;
+      const done = !over && status === 'DONE' && !this.plainNumbers;
+      const col = over ? pal.error : done ? blend(pal.inkSoft, pal.paper, 0.3) : pal.ink;
+      ctx.fillStyle = col;
       // Draw twice, a hair apart, for a pencil-bold look.
       const x = this.cx(g, cell), y = this.cy(g, cell) + size * 0.06;
       ctx.fillText(String(k), x, y);
       ctx.fillText(String(k), x + size * 0.025, y);
+      if (done) pencilLine(ctx, x - size * 0.3, y + size * 0.08, x + size * 0.32, y - size * 0.14, col, Math.max(1.5, size * 0.07), cell * 17 + 1, 2);
+      if (over) pencilCircle(ctx, x, y - size * 0.04, size * 0.52, pal.error, Math.max(1.5, size * 0.08), cell * 29 + 3);
     }
 
     // Paper confetti, over everything.
