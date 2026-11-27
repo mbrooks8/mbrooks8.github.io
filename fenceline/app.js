@@ -755,6 +755,7 @@ function showGame(opts) {
     item(hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint());
     item('Clear mistakes', () => {
       const n = game ? game.clearMistakes() : 0;
+      if (n) play('erase');
       setNote(n === 0 ? 'No mistakes!' : `Erased ${n} mark${n === 1 ? '' : 's'}.`);
       refresh(); save();
     });

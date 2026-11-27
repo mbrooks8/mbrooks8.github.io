@@ -1,6 +1,6 @@
 // Offline support: keeps the whole game cached so it plays without a connection.
 // Bump VERSION whenever any file changes, so phones pick up the new one.
-const VERSION = 'fenceline-web-8';
+const VERSION = 'fenceline-web-9';
 const FILES = [
   './', './index.html', './style.css', './app.js', './ui.js', './board.js', './sketch.js', './store.js',
   './compat.js', './core.js', './worker.js', './room.js', './net.js', './native.js', './sound.js', './nearby.js', './manifest.webmanifest', './fonts/coming-soon.woff2',
