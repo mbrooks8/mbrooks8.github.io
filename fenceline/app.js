@@ -161,7 +161,7 @@ function rulesDialog() {
       el('li', { text: 'Squares without a number can have any count.' }),
       el('li', { text: 'Every dot has two fence pieces touching it, or none. So the fence never stops, splits or crosses.' }),
       el('li', { text: "There's only one fence, and it goes all the way around." })),
-    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty). Pinch to zoom, drag to move.', { size: 16 }),
+    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty), or switch the Pen to X. Pinch to zoom, drag to move.', { size: 16 }),
     el('div', { class: 'gap16' }, button('Got it', () => d.close())),
   );
   d = dialog(col);
@@ -532,11 +532,16 @@ function showGame(opts) {
   const boardFrame = el('div', { class: 'boardframe' }, canvas, loading);
   const undoBtn = button('Undo', () => { game && game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
   const redoBtn = button('Redo', () => { game && game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
-  const bar = el('div', { class: 'row bottombar' }, undoBtn, redoBtn);
+  const penBtn = button('Pen: Fence', () => { board.crossPen = !board.crossPen; refresh(); }, { size: 16 });
+  // Co-op: Ping, then tap the board to point everyone at that dot.
+  const pingBtn = button('Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap a dot to show everyone.'); }, { size: 16 });
+  pingBtn.hidden = true;
+  const bar = el('div', { class: 'row bottombar' }, undoBtn, redoBtn, penBtn, pingBtn);
   const playersText = el('div', { class: 'players', hidden: true });
   const root = el('div', { class: 'game' }, top, playersText, appLink, note, boardFrame, bar);
 
   const board = new BoardView(canvas);
+  board.onPingDone = () => { refresh(); setNote(''); };
   if (window.__fenceline) window.__fenceline.board = board;
   board.onChanged = () => { pendingFix = null; if (mode !== 'tutorial') setNote(''); advanceGuide(); refresh(); save(); };
   board.onOffGuide = () => { const s = guide[guideAt]; if (s) setNote('Try the glowing gap. ' + s.text); };
@@ -589,6 +594,9 @@ function showGame(opts) {
     if (!game) return;
     undoBtn.classList.toggle('dim', !game.canUndo);
     redoBtn.classList.toggle('dim', !game.canRedo);
+    setLabel(penBtn, board.crossPen ? 'Pen: X' : 'Pen: Fence');
+    pingBtn.hidden = !board.onPing;
+    pingBtn.classList.toggle('on', board.pingArmed);
     board.invalidate();
     if (mode === 'mp') sendProgress(game);
     if (game.isSolved() && !winShown) onSolved(false);
@@ -1104,6 +1112,7 @@ function showGame(opts) {
     } else {
       board.ownerColors = null;
       board.onPing = null;
+      board.pingArmed = false;
     }
     mode = 'mp';
     if (!keep) start(g); else { board.invalidate(); laterNote("You're back in!"); }

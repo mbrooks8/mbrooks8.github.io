@@ -150,3 +150,5 @@ canvas.board {
 .loading.count { font-size: 72px; color: var(--accent); -webkit-text-stroke: 1px currentColor; }
 .roomin { font-size: 28px; letter-spacing: 6px; text-transform: uppercase; }
 .namein { font-size: 18px; }
+.btn.on .lbl { color: var(--hint); }
+.bottombar .btn { white-space: nowrap; min-width: 0; padding-left: 2px; padding-right: 2px; }
