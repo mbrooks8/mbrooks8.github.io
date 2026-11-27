@@ -4,8 +4,8 @@ import { rng, rgba, blend } from './sketch.js';
 import { play, playWin } from './sound.js';
 
 
-export const GLOW_FADE_MS = 900;
-export const CONFETTI_MS = 3200;
+export const GLOW_FADE_MS = 1400;
+export const CONFETTI_MS = 6000;
 const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
 /** Methods of BoardView (mixed in by board.js). */
@@ -19,7 +19,7 @@ export class BoardCelebrate {
     const calm = reducedMotion();
     this.loopPath = calm ? null : this.orderLoop(this.game);
     const n = this.loopPath ? this.loopPath.length : 0;
-    this.traceMs = n ? Math.max(700, Math.min(1600, 300 + n * 22)) : 0;
+    this.traceMs = n ? Math.max(1200, Math.min(2800, 500 + n * 40)) : 0;
     this.traceStart = n ? now : 0;
     this.solvedReveal = 0.0001;
     this.revealStart = now + this.traceMs * 0.7;
@@ -27,7 +27,7 @@ export class BoardCelebrate {
     this.confettiStart = celebrate && !calm ? now + this.traceMs : 0;
     if (celebrate && this.sounds) playWin(this.traceMs || 600);
     this.invalidate();
-    return this.traceMs + (this.confettiStart ? 1500 : 600);
+    return this.traceMs + (this.confettiStart ? 2200 : 900);
   }
 
   /** The solved loop's vertices in order round the loop, or null. */
@@ -57,7 +57,7 @@ export class BoardCelebrate {
   spawnConfetti() {
     const cols = this.confettiColors || [this.pencilColor, this.palette.hint, this.palette.done];
     const r = rng(Math.floor(performance.now()));
-    const count = Math.round(Math.min(120, Math.max(60, this.w * this.h / 4000)));
+    const count = Math.round(Math.min(260, Math.max(140, this.w * this.h / 2000)));
     const unit = Math.max(10, Math.min(20, Math.min(this.w, this.h) / 30));
     for (let i = 0; i < count; i++) {
       // Two handfuls tossed up from the bottom corners, plus a few drifting down from the top.
@@ -65,12 +65,12 @@ export class BoardCelebrate {
       const x = fromTop ? r() * this.w : side === 0 ? this.w * (0.05 + r() * 0.15) : this.w * (0.8 + r() * 0.15);
       const y = fromTop ? -unit * (1 + r() * 6) : this.h + unit;
       const ang = -Math.PI / 2 + 0.12 + r() * 0.45; // up and a little inward
-      const speed = fromTop ? 0 : (0.9 + r() * 0.5) * Math.sqrt(this.h) / 19;
+      const speed = fromTop ? 0 : (0.9 + r() * 0.5) * Math.sqrt(this.h) / 23; // same height as before, with the gentler gravity
       this.confetti.push({
         x, y, vx: fromTop ? (r() - 0.5) * 0.04 : Math.cos(ang) * speed * (side === 0 ? 1 : -1), vy: fromTop ? 0.03 + r() * 0.04 : Math.sin(ang) * speed,
         rot: r() * 6.28, vr: (r() - 0.5) * 0.012, flip: r() * 6.28, vf: 0.006 + r() * 0.01,
         w: unit * (0.6 + r() * 0.7), h: unit * (0.3 + r() * 0.35), kind: Math.floor(r() * 4),
-        color: cols[Math.floor(r() * cols.length)], seed: Math.floor(r() * 1e6), delay: fromTop ? r() * 500 : r() * 160,
+        color: cols[Math.floor(r() * cols.length)], seed: Math.floor(r() * 1e6), delay: fromTop ? r() * 2200 : (i % 2 ? 0 : 700) + r() * 200, // two tosses, then a long drift
       });
     }
     this.lastConfettiAt = performance.now();
@@ -81,15 +81,15 @@ export class BoardCelebrate {
     const dt = Math.min(40, now - (this.lastConfettiAt || now));
     this.lastConfettiAt = now;
     const age = now - this.confettiStart;
-    const fade = Math.max(0, Math.min(1, (CONFETTI_MS - age) / 700));
-    const g = 0.0016; // gravity, px/ms²
+    const fade = Math.max(0, Math.min(1, (CONFETTI_MS - age) / 1200));
+    const g = 0.0011; // gravity, px/ms²
     for (const p of this.confetti) {
       if (age < p.delay) continue;
       p.vy += g * dt;
       // Paper has a lot of air drag: it soon floats down at a gentle speed, swaying.
       const drag = Math.pow(0.997, dt);
       p.vx *= Math.pow(0.9985, dt);
-      if (p.vy > 0.11) p.vy = 0.11 + (p.vy - 0.11) * drag;
+      if (p.vy > 0.075) p.vy = 0.075 + (p.vy - 0.075) * drag;
       p.flip += p.vf * dt; p.rot += p.vr * dt;
       p.x += (p.vx + Math.sin(p.flip * 0.7) * 0.03) * dt; p.y += p.vy * dt;
       ctx.save();

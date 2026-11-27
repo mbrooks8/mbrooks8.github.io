@@ -47,7 +47,7 @@ export class BoardDraw {
     // Solved: shade the inside of the loop with pencil hatching.
     if (this.solvedReveal > 0) {
       if (this.revealStart) {
-        const t = Math.max(0, Math.min(1, (performance.now() - this.revealStart) / 1200));
+        const t = Math.max(0, Math.min(1, (performance.now() - this.revealStart) / 2000));
         this.solvedReveal = t < 1 ? Math.max(0.0001, 1 - Math.pow(1 - t, 2)) : 1;
         if (t < 1) animate = true; else this.revealStart = 0;
       }
@@ -177,7 +177,7 @@ export class BoardDraw {
       }
     }
 
-    // Pings ("look here"): three rings growing out from the dot.
+    // Pings ("look here"): three rings growing out from the spot.
     if (this.pings.length) {
       const now = performance.now();
       this.pings = this.pings.filter(p => now - p.start <= PING_MS);
@@ -189,7 +189,7 @@ export class BoardDraw {
           ctx.strokeStyle = pm.color;
           ctx.globalAlpha = Math.max(0, Math.min(1, (1 - r) * (230 / 255) * (1 - t * 0.5)));
           ctx.lineWidth = lineW * 0.6;
-          ctx.beginPath(); ctx.arc(this.sx(g, pm.vertex), this.sy(g, pm.vertex), unit * (0.15 + r * 0.6), 0, 6.2832); ctx.stroke();
+          ctx.beginPath(); ctx.arc(this.offX + pm.x * this.scale, this.offY + pm.y * this.scale, unit * (0.15 + r * 0.6), 0, 6.2832); ctx.stroke();
           ctx.restore();
         }
       }

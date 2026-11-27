@@ -36,6 +36,20 @@ export class BoardInput {
     return best;
   }
 
+  /** Co-op "look here" at the exact spot tapped (screen x, y), kept anywhere on the board. */
+  pingAt(x, y) {
+    const g = this.game && this.game.grid;
+    if (!g) return;
+    const pad = 0.6 * g.edgeLength; // the paper around the board counts too
+    const bx = Math.max(g.minX - pad, Math.min(g.maxX + pad, (x - this.offX) / this.scale));
+    const by = Math.max(g.minY - pad, Math.min(g.maxY + pad, (y - this.offY) / this.scale));
+    // The nearest dot goes along too, for 1.x phones that only know dots.
+    const v = this.vertexNear(this.offX + bx * this.scale, this.offY + by * this.scale, Infinity);
+    this.onPing(v, bx / g.edgeLength, by / g.edgeLength);
+    this.buzz(25);
+    if (this.sounds) play('ping');
+  }
+
   buzz(ms = 8) { if (this.haptics) vibrate(ms); }
 
   clampPan() {
@@ -64,15 +78,11 @@ export class BoardInput {
     if (!gm || this.locked) return;
     if (this.pingArmed && this.onPing) {
       this.pingArmed = false;
-      const v = this.vertexNear(x, y, 1.5);
-      if (v >= 0) { this.onPing(v); this.buzz(25); if (this.sounds) play('ping'); }
+      this.pingAt(x, y);
       if (this.onPingDone) this.onPingDone();
       return;
     }
-    if (long && this.onPing) {
-      const v = this.vertexNear(x, y, 0.3);
-      if (v >= 0) { this.onPing(v); this.buzz(25); if (this.sounds) play('ping'); return; }
-    }
+    if (long && this.onPing && this.vertexNear(x, y, 0.3) >= 0) { this.pingAt(x, y); return; }
     const edge = this.edgeAt(x, y);
     if (edge < 0) return;
     if (this.onlyGuided && !this.guideEdges.has(edge)) { this.onOffGuide && this.onOffGuide(); return; }

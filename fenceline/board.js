@@ -24,7 +24,7 @@ export class BoardView {
     /** Co-op: pencil colour per player id; fences are drawn in their owner's colour. */
     this.ownerColors = null;
     this.ownerStyles = null; // solid, dashed or dotted per seat (co-op)
-    /** Co-op: long-pressing a dot calls this ("look here") instead of placing an X. */
+    /** Co-op "look here": called with (nearest dot, x, y in edge lengths) by the Ping button or a long-press on a dot. */
     this.onPing = null;
     this.pings = [];
     this.scale = 1; this.fitScale = 1; this.offX = 0; this.offY = 0;
@@ -41,7 +41,7 @@ export class BoardView {
     this.frame = 0;
     this.crossPen = false; // Pen: X, taps make X instead of fence
     this.drawPen = false; // Pen: Draw, drag from dot to dot to draw (two fingers move the board)
-    this.pingArmed = false; // co-op Ping button: the next tap points at the nearest dot
+    this.pingArmed = false; // co-op Ping button: the next tap points everyone at that spot
     this.onPingDone = null;
     this.pointers = new Map();
     this.ro = new ResizeObserver(() => this.resize());
@@ -94,10 +94,19 @@ export class BoardView {
     this.invalidate();
   }
 
-  /** Flashes a few growing rings at [vertex] in [color] for a couple of seconds. */
-  showPing(vertex, color) {
-    this.pings = this.pings.filter(p => p.vertex !== vertex);
-    this.pings.push({ vertex, color, start: performance.now() });
+  /**
+   * Flashes a few growing rings in [color] for a couple of seconds, at the spot [x], [y] (in edge
+   * lengths, the same on every phone whatever its zoom), or at dot [vertex] when there's no spot.
+   */
+  showPing(vertex, color, x, y) {
+    const g = this.game && this.game.grid;
+    if (!g) return;
+    const at = x != null && y != null && Number.isFinite(x) && Number.isFinite(y);
+    if (!at && !(vertex >= 0 && vertex < g.vertexCount)) return;
+    const px = at ? x * g.edgeLength : g.vx[vertex], py = at ? y * g.edgeLength : g.vy[vertex];
+    // A new ping close to an old one replaces it (no pile of rings).
+    this.pings = this.pings.filter(p => Math.hypot(p.x - px, p.y - py) > 0.25 * g.edgeLength);
+    this.pings.push({ x: px, y: py, color, start: performance.now() });
     this.invalidate();
   }
 
