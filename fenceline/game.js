@@ -3,12 +3,12 @@
 import { isApp } from './native.js';
 import { Edge, Shape, Boards, dailySeed, PuzzleCode, Tutorial, Game } from './core.js';
 import { store, formatTime } from './store.js';
-import { el, onThemeChange, dialog, theme, text, setLabel, button, sk } from './ui.js';
+import { el, onThemeChange, dialog, theme, text, button, sk } from './ui.js';
+import { icon } from './icons.js';
 import { BoardView } from './board.js';
 import { Mode } from './room.js';
 import { play } from './sound.js';
-import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, JOIN_BASE, factory, dailyDate, isAndroid, keepAwake } from './common.js';
-import { rulesDialog, settingsDialog } from './dialogs.js';
+import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, JOIN_BASE, factory, isAndroid, keepAwake } from './common.js';
 import { createPlay } from './play.js';
 import { leaveGame, setScreen, showMenu } from './app.js';
 
@@ -18,13 +18,14 @@ export function showGame(opts) {
   const hintsOff = () => store.noHints && mode !== 'tutorial';
 
   // Layout.
-  const back = el('button', { type: 'button', class: 'iconbtn', 'aria-label': 'Back', text: '‹' });
+  const back = el('button', { type: 'button', class: 'iconbtn', 'aria-label': 'Back' }, icon('back', 26));
   back.addEventListener('click', () => { save(); leaveGame(); });
   const title = el('div', { class: 'gtitle' });
   const timerText = el('div', { class: 'timer' });
-  const menuBtn = el('button', { type: 'button', class: 'iconbtn', 'aria-label': 'Menu', text: '⋯' });
+  const menuBtn = el('button', { type: 'button', class: 'iconbtn', 'aria-label': 'Menu' }, icon('dots', 28));
   menuBtn.addEventListener('click', () => menuDialog());
-  const top = el('div', { class: 'topbar' }, back, title, timerText, menuBtn);
+  // Just back, the timer and ⋯ (a small line above the timer only in lessons).
+  const top = el('div', { class: 'topbar' }, back, el('div', { class: 'topmid' }, title, timerText), menuBtn);
   const appLink = el('div', { class: 'applink', hidden: true });
   const note = sk(el('div', { class: 'note', hidden: true }), { stroke: 'inkSoft', width: 1.6 });
   const noteText = el('span');
@@ -34,20 +35,29 @@ export function showGame(opts) {
   const canvas = el('canvas', { class: 'board', 'aria-label': 'Puzzle board' });
   const loading = el('div', { class: 'loading', text: 'sharpening pencils…' });
   const boardFrame = el('div', { class: 'boardframe' }, canvas, loading);
+  // Bottom bar: Undo and Redo as ringed icons, the pen (with one word, so you know the mode), and co-op Ping.
+  const tool = (name, word, aria, onClick, { kind = 'ring', cls = '' } = {}) => {
+    const ring = el('span', { class: 'ring' }, icon(name, 28));
+    const b = el('button', { type: 'button', class: 'tool ' + cls, 'aria-label': aria }, ring, el('span', { class: 'word', text: word }));
+    sk(ring, kind === 'wash' ? { kind: 'wash', fill: 'accentTint', stroke: 'accent' } : { kind: 'ring', stroke: 'inkSoft', width: 1.6 });
+    b.addEventListener('click', onClick);
+    b._set = (n, w, a) => { ring.querySelector('svg').replaceWith(icon(n, 28)); b.querySelector('.word').textContent = w; b.setAttribute('aria-label', a); };
+    return b;
+  };
   // A finished puzzle stays finished: undo would un-solve a win that is already counted.
-  const undoBtn = button('Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
-  const redoBtn = button('Redo', () => { if (!game || game.isSolved()) return; if (game.canRedo) play('flick'); game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); }, { size: 16 });
+  const undoBtn = tool('undo', '', 'Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); game.undo(); board.clearHighlights(); pendingFix = null; refresh(); save(); });
+  const redoBtn = tool('redo', '', 'Redo', () => { if (!game || game.isSolved()) return; if (game.canRedo) play('flick'); game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); });
   // Pen: Fence -> X -> Draw (drag from dot to dot) -> Fence.
-  const penBtn = button('Pen: Fence', () => {
+  const penBtn = tool('pen', 'Fence', 'Pen: Fence', () => {
     if (board.drawPen) { board.drawPen = false; board.crossPen = false; }
     else if (board.crossPen) { board.crossPen = false; board.drawPen = true; }
     else board.crossPen = true;
     refresh();
-  }, { size: 16 });
+  }, { kind: 'wash', cls: 'pen' });
   // Co-op: Ping, then tap the board to point everyone at that dot.
-  const pingBtn = button('Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap a dot to show everyone.'); }, { size: 16 });
+  const pingBtn = tool('ping', 'Ping', 'Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap a dot to show everyone.'); });
   pingBtn.hidden = true;
-  const bar = el('div', { class: 'row bottombar' }, undoBtn, redoBtn, penBtn, pingBtn);
+  const bar = el('div', { class: 'bottombar tools' }, undoBtn, redoBtn, pingBtn, penBtn);
   const playersText = el('div', { class: 'players', hidden: true });
   const root = el('div', { class: 'game' }, top, playersText, appLink, note, boardFrame, bar);
 
@@ -107,7 +117,8 @@ export function showGame(opts) {
     const over = game.isSolved();
     undoBtn.classList.toggle('dim', over || !game.canUndo);
     redoBtn.classList.toggle('dim', over || !game.canRedo);
-    setLabel(penBtn, board.drawPen ? 'Pen: Draw' : board.crossPen ? 'Pen: X' : 'Pen: Fence');
+    const pen = board.drawPen ? ['draw', 'Draw'] : board.crossPen ? ['x', 'X'] : ['pen', 'Fence'];
+    if (penBtn._mode !== pen[1]) { penBtn._mode = pen[1]; penBtn._set(pen[0], pen[1], 'Pen: ' + pen[1]); }
     pingBtn.hidden = !board.onPing;
     pingBtn.classList.toggle('on', board.pingArmed);
     board.invalidate();
@@ -124,14 +135,9 @@ export function showGame(opts) {
     g.autoCross = store.autoCross;
     applySettings();
     board.setGame(g);
-    const p = g.puzzle;
-    let head;
-    if (mode === 'daily') head = 'Daily · ' + dailyDate(p).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    else if (mode === 'tutorial') head = `Lesson ${step + 1}/${Tutorial.steps.length} · ${Tutorial.steps[step].title}`;
-    else if (mode === 'mp') head = (mp.mpMode === Mode.COOP ? 'Co-op · ' : 'Versus · ') + `${Boards.label(p.shape, p.width, p.height)} ${diffLabel(p.difficulty)}`;
-    else head = `${Boards.label(p.shape, p.width, p.height)} · ${diffLabel(p.difficulty)}`;
-    const code = mode === 'tutorial' ? null : PuzzleCode.of(p);
-    title.replaceChildren(el('div', { class: 'head', text: head }), code ? el('div', { class: 'code', text: code.toString() }) : '');
+    // No headline (the board says what it is; the code lives in Share), except which lesson this is.
+    const head = mode === 'tutorial' ? `Lesson ${step + 1} of ${Tutorial.steps.length}` : '';
+    title.replaceChildren(head ? el('div', { class: 'head', text: head }) : '');
     setNote(mode === 'tutorial' ? Tutorial.steps[step].tip : '');
     startGuide(g);
     resumedAt = performance.now();
@@ -269,45 +275,49 @@ export function showGame(opts) {
   };
   const sharePuzzle = timeMs => { const t = shareMsg(timeMs); if (t) shareText(t, setNote); };
 
+  /** The ⋯ menu: a sticky note under the button. */
   const menuDialog = () => {
     let d;
-    const col = el('div', { class: 'col' });
-    const item = (label, action) => col.append(el('div', { class: 'gap8' }, button(label, () => { d.close(); action(); }, { size: 17 })));
+    const col = el('div', { class: 'col', style: 'gap:0' });
+    const item = (ic, label, action, color) => {
+      const b = el('button', { type: 'button', class: 'noteitem' }, icon(ic, 24, color), el('span', { text: label }));
+      b.addEventListener('click', () => { d.close(); action(); });
+      col.append(b);
+    };
+    const multi = mode === 'mp';
     // Hint first circles any wrong marks (Hint again erases them), else draws the next piece.
     // With "No hints" on it is Check, which only looks for mistakes.
-    item(hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint());
-    item('Clear mistakes', () => {
+    item(hintsOff() ? 'check' : 'bulb', hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint(), 'var(--hint)');
+    item('eraser', 'Clear mistakes', () => {
       const n = game ? game.clearMistakes() : 0;
       sharedHints();
       if (n) play('erase');
       setNote(n === 0 ? 'No mistakes!' : `Erased ${n} mark${n === 1 ? '' : 's'}.`);
       refresh(); save();
     });
-    if (mode === 'mp' && mp.room && !mp.nearby && mp.room.roomId) item('Invite friends', () => {
+    if (!multi) item('restart', 'Start over', confirmReset);
+    col.append(el('hr', { class: 'divider', style: 'margin:6px 0' }));
+    if (multi && mp.room && !mp.nearby && mp.room.roomId) item('invite', 'Invite', () => {
       const c = mp.room.roomId.toUpperCase();
       shareText(`Join my Fenceline game!\n${JOIN_BASE}${c}\nRoom code: ${c}`, setNote);
     });
-    if (mode !== 'tutorial' && game && PuzzleCode.of(game.puzzle)) {
-      item('Share puzzle', () => sharePuzzle(null));
-    }
-    item('Reset puzzle', confirmReset);
-    if (mode === 'free') item('New puzzle', () => {
+    if (mode !== 'tutorial' && game && PuzzleCode.of(game.puzzle)) item('share', 'Share', () => sharePuzzle(null));
+    if (mode === 'free') item('newp', 'New puzzle', () => {
       const p = game && game.puzzle;
       if (p) newPuzzle(p.width, p.height, p.difficulty || 'EASY', null, p.shape);
     });
-    item('Settings', () => settingsDialog(() => { applySettings(); refresh(); }));
-    item('How to play', rulesDialog);
-    d = dialog(col);
+    if (multi) item('leave', 'Leave game', () => leaveGame());
+    d = dialog(col, { place: 'note' });
   };
 
   const confirmReset = () => {
     let d;
     d = dialog(el('div', { class: 'col' },
-      text('Reset puzzle?', { size: 24, bold: true }),
+      text('Start over?', { size: 24, bold: true }),
       text(mp.shared() ? "This clears everyone's lines on the shared board." : 'This clears all your marks. The timer keeps going.', { size: 16, color: 'inkSoft' }),
       el('div', { class: 'row gap14' },
         button('Cancel', () => d.close(), { size: 17 }),
-        button('Reset', () => {
+        button('Start over', () => {
           d.close();
           if (mode === 'tutorial') { // start the lesson over, with its own fences back in place
             const ms = game ? game.elapsedMs : 0;
@@ -321,8 +331,8 @@ export function showGame(opts) {
           if (mp.shared() && mp.coop) mp.coop.syncAll(); // host also sends the whole board, so everyone lands on the same blank board
           setNote('');
           refresh(); save();
-        }, { size: 17, accent: 'error' })),
-    ));
+        }, { size: 17, kind: 'primary' })),
+    ), { closeX: false });
   };
 
   const onSolved = alreadyDone => {
@@ -348,37 +358,47 @@ export function showGame(opts) {
     setTimeout(() => { if (!disposed) showWin(g, best); }, showMs);
   };
 
+  /** The win card: a taped card at the bottom, so the shaded loop stays in view above it. */
   const showWin = (g, newBest) => {
     let d;
     const cheers = ['Lovely loop!', 'Neatly fenced!', 'All closed up!', 'Beautifully done!', "That's the one!"];
     const seed = g.puzzle.seed == null ? 0n : BigInt(g.puzzle.seed);
     const idx = Number(((seed % 5n) + 5n) % 5n);
-    const kids = [text(cheers[idx], { size: 30, bold: true, color: 'accent', cls: 'center' })];
-    const parts = [`Time ${formatTime(g.elapsedMs)}`, g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`];
-    kids.push(text(parts.join(' · '), { size: 18, cls: 'center gap8' }));
-    if (newBest) kids.push(text('★ New best! ★', { size: 18, bold: true, color: 'hint', cls: 'center' }));
-    if (mode === 'daily' && isTodaysDaily(g.puzzle)) kids.push(text(`Streak: ${store.dailyStreak}`, { size: 17, cls: 'center' }));
+    const kids = [el('div', { class: 'cheer' }, icon('sprig', 28, 'var(--done)', 1.5), el('span', { text: cheers[idx] }))];
+    const line = el('div', { class: 'line' }, `${formatTime(g.elapsedMs)} · ${g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`}`);
+    if (mode === 'daily' && isTodaysDaily(g.puzzle)) line.append(' · ', icon('candle', 16, 'var(--hint)'), String(store.dailyStreak));
+    kids.push(line);
+    if (newBest) kids.push(text('★ New best! ★', { size: 17, bold: true, color: 'hint', cls: 'center' }));
+    const links = [];
     if (mode === 'tutorial') {
+      store.markLessonDone(step);
       if (step + 1 < Tutorial.steps.length) {
-        kids.push(el('div', { class: 'gap16' }, button('Next lesson', () => { d.close(); startTutorial(step + 1); }, { size: 18, accent: 'accent' })));
+        kids.push(el('div', { class: 'gap12' }, button('Next lesson', () => { d.close(); startTutorial(step + 1); }, { size: 21, kind: 'primary' })));
       } else {
         store.tutorialStep = 0;
-        kids.push(text("You've got the basics!", { size: 16, cls: 'center gap10' }));
-        kids.push(el('div', { class: 'gap12' }, button('Play a 5×5', () => { d.close(); newPuzzle(5, 5, 'EASY', null, Shape.SQUARE); }, { size: 18, accent: 'accent' })));
+        kids.push(text("You've got the basics!", { size: 16, cls: 'center' }));
+        kids.push(el('div', { class: 'gap8' }, button('Play a 5×5', () => { d.close(); newPuzzle(5, 5, 'EASY', null, Shape.SQUARE); }, { size: 21, kind: 'primary' })));
       }
     } else if (mode === 'free') {
-      kids.push(el('div', { class: 'gap16' }, button('Next puzzle', () => {
+      kids.push(el('div', { class: 'gap12' }, button('Next puzzle', () => {
         d.close();
         const p = g.puzzle;
         newPuzzle(p.width, p.height, p.difficulty || 'EASY', null, p.shape);
-      }, { size: 18, accent: 'accent' })));
+      }, { size: 21, kind: 'primary' })));
     }
-    if (mode !== 'tutorial' && PuzzleCode.of(g.puzzle)) kids.push(el('div', { class: 'gap8' }, button('Challenge a friend', () => sharePuzzle(g.elapsedMs), { size: 16 })));
-    kids.push(el('div', { class: 'gap8' }, button('Menu', () => { d.close(); leaveGame(); }, { size: 16 })));
-    d = dialog(el('div', { class: 'col' }, ...kids));
+    if (mode !== 'tutorial' && PuzzleCode.of(g.puzzle)) links.push(button('Challenge a friend', () => sharePuzzle(g.elapsedMs), { size: 17, kind: 'link' }));
+    links.push(button('Menu', () => { d.close(); leaveGame(); }, { size: 17, kind: 'link' }));
+    kids.push(el('div', { class: 'links' }, ...links));
+    const unshrink = () => { root.classList.remove('won'); root.style.removeProperty('--wonPad'); };
+    d = dialog(el('div', { class: 'col wincard', style: 'gap:6px' }, ...kids), { place: 'bottom', closeX: false, onClose: unshrink });
+    // Make room: the board shrinks to sit above the card.
+    requestAnimationFrame(() => {
+      const card = document.querySelector('.overlay.place-bottom .card');
+      if (!card || disposed) return;
+      root.style.setProperty('--wonPad', Math.round(card.getBoundingClientRect().height) - bar.getBoundingClientRect().height + 8 + 'px');
+      root.classList.add('won');
+    });
   };
-
-
 
   // Play together (lobby, rounds, co-op sync, joining, host moves) lives in play.js.
   const ctx = {
@@ -419,7 +439,7 @@ export function showGame(opts) {
   } else if (mode === 'daily') {
     factory.request(10, 10, 'MEDIUM', dailySeed(new Date()), Shape.SQUARE).then(p => start(new Game(p)), err => { loading.textContent = "Oops, today's puzzle wouldn't draw."; console.error(err); });
   } else if (mode === 'tutorial') {
-    startTutorial(step);
+    startTutorial(step, !opts.noGoal);
   } else if (mode === 'mp') {
     mp.startMultiplayer();
   } else if (mode === 'code') {

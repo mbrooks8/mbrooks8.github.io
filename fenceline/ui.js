@@ -1,5 +1,6 @@
 // Small helpers for the hand-drawn UI: themed palette, sketchy boxes, buttons, chips and dialogs.
-import { DAY, NIGHT, pencilColor, paperTexture, drawBox, rgba } from './sketch.js';
+import { DAY, NIGHT, pencilColor, paperTexture, drawBox, rgba, drawRing, drawShaded, drawWash, drawUnderline, inkOn } from './sketch.js';
+import { icon } from './icons.js';
 import { store } from './store.js';
 
 export const theme = { night: false, pal: DAY, accent: pencilColor(0, false) };
@@ -17,6 +18,7 @@ export function applyTheme() {
   for (const [k, v] of Object.entries(p)) root.style.setProperty('--' + k, v);
   root.style.setProperty('--accent', theme.accent);
   root.style.setProperty('--accentTint', rgba(theme.accent, 0x22 / 255));
+  root.style.setProperty('--onAccent', inkOn(theme.accent, '#2E2925', '#FFF8EC'));
   root.style.setProperty('--paperImg', `url(${paperTexture(theme.night)})`);
   const meta = document.querySelector('meta[name=theme-color]');
   if (meta) meta.setAttribute('content', p.paper);
@@ -48,10 +50,17 @@ function drawSk(node) {
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, c.width, c.height);
   const o = node._sk;
-  drawBox(ctx, r.width, r.height, {
-    fill: color(o.fill || 'card'), stroke: color(o.stroke || 'ink'), width: o.width || 2.2,
-    corner: 10, seed: o.seed, dpr,
-  });
+  const W = c.width, H = c.height;
+  if (o.kind === 'ring') drawRing(ctx, W, H, { stroke: color(o.stroke || 'accent'), width: o.width || 2, seed: o.seed, dpr });
+  else if (o.kind === 'shaded') drawShaded(ctx, W, H, { fill: color(o.fill || 'accent'), stroke: color(o.stroke || 'accent'), seed: o.seed, dpr });
+  else if (o.kind === 'wash') drawWash(ctx, W, H, { fill: color(o.fill || 'accentTint'), stroke: o.stroke ? color(o.stroke) : null, dpr });
+  else if (o.kind === 'under') drawUnderline(ctx, W, H, { stroke: color(o.stroke || 'inkSoft'), width: o.width || 1.8, seed: o.seed, dpr });
+  else if (o.kind === 'none') { /* nothing */ } else {
+    drawBox(ctx, r.width, r.height, {
+      fill: color(o.fill || 'card'), stroke: color(o.stroke || 'ink'), width: o.width || 2.2,
+      corner: 10, seed: o.seed, dpr,
+    });
+  }
 }
 
 /** Gives [node] a hand-drawn box behind its content. */
@@ -96,16 +105,47 @@ export function text(s, { size = 18, bold = false, color: col, cls = '' } = {}) 
   return n;
 }
 
-export function button(label, onClick, { size = 18, accent = null, cls = '' } = {}) {
-  const b = el('button', { type: 'button', class: 'btn ' + cls });
-  b.append(el('span', { class: 'lbl', text: label }));
+/**
+ * A pencil button. kind: 'box' (plain box, the default), 'primary' (shaded in with the pencil colour),
+ * 'outline' (pencil-colour box), 'link' (underlined words) or 'plain' (just the words).
+ */
+export function button(label, onClick, { size = 18, accent = null, cls = '', kind = 'box', icon: ic = null, aria = null } = {}) {
+  const b = el('button', { type: 'button', class: `btn btn-${kind} ` + cls });
+  if (aria) b.setAttribute('aria-label', aria);
+  const lbl = el('span', { class: 'lbl' });
+  if (ic) lbl.append(icon(ic, Math.round(size * 1.15)));
+  lbl.append(el('span', { class: 'lbltext', text: label }));
+  b.append(lbl);
   b.style.fontSize = size + 'px';
   if (accent) b.style.color = `var(--${accent})`;
   b.addEventListener('click', onClick);
+  if (kind === 'primary') return sk(b, { kind: 'shaded', fill: 'accent', stroke: 'accent' });
+  if (kind === 'outline') return sk(b, { stroke: 'accent', fill: 'card' });
+  if (kind === 'link') return sk(b, { kind: 'under', stroke: 'inkSoft' });
+  if (kind === 'plain') return b;
   return sk(b, { stroke: accent || 'ink' });
 }
 
-export function setLabel(b, label) { b.querySelector('.lbl').textContent = label; }
+/** A choice shown as plain words, ringed in pencil when picked (the ring is the signal, not only the colour). */
+export function pick(label, selected, onClick, { size = 19, aria = null } = {}) {
+  const b = el('button', { type: 'button', class: 'pick' + (selected ? ' sel' : ''), 'aria-pressed': selected ? 'true' : 'false' });
+  if (aria) b.setAttribute('aria-label', aria);
+  b.append(el('span', { class: 'lbl', text: label }));
+  b.style.fontSize = size + 'px';
+  b.addEventListener('click', onClick);
+  return selected ? sk(b, { kind: 'ring', stroke: 'accent' }) : b;
+}
+
+/** A small icon button with a word under it (home screen row, game bottom bar). */
+export function iconButton(name, label, onClick, { size = 26, aria = null, cls = '' } = {}) {
+  const b = el('button', { type: 'button', class: 'iconlink ' + cls, 'aria-label': aria || label });
+  b.append(icon(name, size));
+  if (label) b.append(el('span', { class: 'iclbl', text: label }));
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+export function setLabel(b, label) { (b.querySelector('.lbltext') || b.querySelector('.lbl')).textContent = label; }
 
 export function chip(label, selected, onClick, { size = 16 } = {}) {
   const b = el('button', { type: 'button', class: 'chip' + (selected ? ' sel' : '') });
@@ -121,12 +161,18 @@ export function row(...kids) { return el('div', { class: 'row' }, ...kids); }
 
 const openDialogs = [];
 
-/** A paper-card dialog holding [content]. Returns { close }. */
-export function dialog(content, { cancelable = true, onClose } = {}) {
-  const card = sk(el('div', { class: 'card', role: 'dialog', 'aria-modal': 'true' }), { width: 2.4 });
+/**
+ * A taped paper card holding [content]. Returns { close }.
+ * place: 'center' (default), 'bottom' (win card: no dimming, so the board stays in view) or 'note'
+ * (a sticky note under the top-right ⋯ button). Cancelable cards get a small × in the corner.
+ */
+export function dialog(content, { cancelable = true, onClose, place = 'center', closeX = true } = {}) {
+  const card = el('div', { class: 'card paper place-' + place, role: 'dialog', 'aria-modal': 'true' });
+  card.style.setProperty('--tilt', ((boxSeed++ % 5) - 2) * 0.25 + 'deg');
+  card.append(el('div', { class: 'tape', 'aria-hidden': 'true' }));
   const inner = el('div', { class: 'card-inner' }, content);
   card.append(inner);
-  const overlay = el('div', { class: 'overlay' }, card);
+  const overlay = el('div', { class: 'overlay place-' + place }, card);
   let closed = false;
   const d = {
     close() {
@@ -140,6 +186,11 @@ export function dialog(content, { cancelable = true, onClose } = {}) {
     },
     cancelable,
   };
+  if (cancelable && closeX && place !== 'note') {
+    const x = el('button', { type: 'button', class: 'closex', 'aria-label': 'Close' }, icon('x', 20));
+    x.addEventListener('click', () => d.close());
+    card.append(x);
+  }
   overlay.addEventListener('click', e => { if (e.target === overlay && cancelable) d.close(); });
   document.body.append(overlay);
   openDialogs.push(d);

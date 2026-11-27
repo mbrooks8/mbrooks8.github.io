@@ -1,51 +1,100 @@
-// Dialogs opened from the main menu and the game: settings, how to play, enter a code, stats, history,
-// play together and join a game.
-// ---- shared dialogs ----
+// Cards opened from the main menu and the game: settings, enter a code, stats (with history),
+// play together and join a game. Learn (with the rules) is learn.js.
+// They are taped paper cards with no titles: you tapped the button, so you know where you are.
 import { isApp, canKeepAwake, canVibrate, canReadClipboard, readClipboard } from './native.js';
 import { Shape, Boards, PuzzleCode } from './core.js';
 import { store, formatTime } from './store.js';
-import { el, chip, row, onThemeChange, dialog, theme, text, button, applyTheme, sk } from './ui.js';
-import { pencilColor } from './sketch.js';
-import { PENCILS, Mode } from './room.js';
+import { el, onThemeChange, dialog, theme, text, button, pick, applyTheme, sk } from './ui.js';
+import { pencilColor, PENCILS, pencilLine, drawBox } from './sketch.js';
+import { icon } from './icons.js';
+import { Mode } from './room.js';
 import { cleanCode } from './net.js';
-import { SHARE_BASE, shareText, defaultName, GROUP_SIZES, diffLabel, cap } from './common.js';
+import { SHARE_BASE, shareText, defaultName, GROUP_SIZES, diffLabel, cap, factory } from './common.js';
+import { shapeChip } from './shapes.js';
+import { thumb } from './thumb.js';
 import { openGame } from './app.js';
 
+const FIRST = 5; // sizes shown before "more"
+
+/** Size picks: the first few, then "more" opens the rest (and stays open while a hidden size is picked). */
+export function sizePicks(sizes, current, onPick, isOpen, setOpen) {
+  const open = isOpen() || sizes.indexOf(current) >= FIRST;
+  const shown = open ? sizes : sizes.slice(0, FIRST);
+  const rows = [];
+  const per = open ? 4 : FIRST;
+  for (let i = 0; i < shown.length; i += per) {
+    rows.push(el('div', { class: 'picks gap16' }, ...shown.slice(i, i + per).map(s =>
+      pick(s.replace('x', '×'), current === s, () => onPick(s), { size: 19 }))));
+  }
+  if (sizes.length > FIRST) {
+    const more = pick(open ? 'less ▴' : 'more ▾', false, () => setOpen(!open), { size: 15, aria: open ? 'Fewer sizes' : 'More sizes' });
+    if (open) rows.push(el('div', { class: 'more' }, more));
+    else rows[rows.length - 1].append(more);
+  }
+  return rows;
+}
+
+/** A hand-drawn tick box. */
+function tickBox(on) {
+  const c = el('canvas', { 'aria-hidden': 'true' });
+  requestAnimationFrame(() => {
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    c.width = c.height = Math.round(24 * dpr);
+    const ctx = c.getContext('2d');
+    drawBox(ctx, 24, 24, { fill: 'rgba(0,0,0,0)', stroke: theme.pal.inkSoft, width: 1.5, corner: 3, seed: 5, dpr });
+    if (on) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      pencilLine(ctx, 5, 12, 10, 18, theme.accent, 2.6, 3, 2);
+      pencilLine(ctx, 10, 18, 21, 3, theme.accent, 2.6, 4, 2);
+    }
+  });
+  return c;
+}
+
+/** A wavy pencil scribble in pencil [i]'s colour, for picking a pencil. */
+function scribble(i) {
+  const c = el('canvas', { 'aria-hidden': 'true', style: 'width:44px;height:30px;display:block' });
+  requestAnimationFrame(() => {
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    c.width = Math.round(44 * dpr); c.height = Math.round(30 * dpr);
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const col = pencilColor(i, theme.night);
+    const pts = [[6, 22], [12, 8], [18, 20], [24, 8], [30, 18], [38, 9]];
+    for (let k = 0; k + 1 < pts.length; k++) pencilLine(ctx, pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], col, 3.4, i * 9 + k, 2);
+  });
+  return c;
+}
 
 export function settingsDialog(onDone) {
-  const col = el('div', { class: 'col' });
+  const col = el('div', { class: 'col', style: 'gap:0' });
   let d;
   const toggle = (label, key) => {
-    const t = el('button', { type: 'button', class: 'toggle' });
-    const refresh = () => { t.textContent = (store[key] ? '☑  ' : '☐  ') + label; };
-    refresh();
-    t.addEventListener('click', () => { store[key] = !store[key]; refresh(); });
+    const t = el('button', { type: 'button', class: 'tick' + (store[key] ? '' : ' off'), role: 'switch', 'aria-checked': store[key] ? 'true' : 'false' });
+    t.append(tickBox(store[key]), el('span', { text: label }));
+    t.addEventListener('click', () => { store[key] = !store[key]; build(); });
     return t;
   };
   const build = () => {
     col.replaceChildren(
-      text('Settings', { size: 26, bold: true }),
       toggle('Show mistakes', 'showErrors'),
       toggle('Auto-X around finished numbers', 'autoCross'),
-      toggle('Show timer', 'showTimer'),
+      toggle('Timer', 'showTimer'),
       toggle('Sound', 'sound'),
       ...(canVibrate() ? [toggle('Vibrate', 'haptics')] : []),
       ...(canKeepAwake() ? [toggle('Keep screen on', 'keepAwake')] : []),
-      text('Challenge', { size: 17, bold: true, cls: 'gap14' }),
+      el('hr', { class: 'divider' }),
       toggle('No hints', 'noHints'),
-      toggle('Plain numbers (no tick when done)', 'plainNumbers'),
-      text('Pencil', { size: 17, bold: true, cls: 'gap14' }),
-      row(...PENCILS.map(([name], i) => {
-        const c = chip(name.slice(0, 5), store.pencil === i, () => { store.pencil = i; applyTheme(); build(); }, { size: 12 });
-        c.style.color = pencilColor(i, theme.night);
-        if (store.pencil === i) { c._sk.stroke = pencilColor(i, theme.night); }
-        return c;
+      toggle('Plain numbers', 'plainNumbers'),
+      el('hr', { class: 'divider' }),
+      el('div', { class: 'scribbles' }, ...PENCILS.map(([name], i) => {
+        const b = el('button', { type: 'button', class: 'pick', 'aria-label': name + ' pencil', 'aria-pressed': store.pencil === i ? 'true' : 'false' }, scribble(i));
+        b.addEventListener('click', () => { store.pencil = i; applyTheme(); onThemeChange.forEach(f => f()); build(); });
+        return store.pencil === i ? sk(b, { kind: 'ring', stroke: pencilColor(i, theme.night) }) : b;
       })),
-      text('Paper', { size: 17, bold: true, cls: 'gap14' }),
-      row(...[['system', 'Auto'], ['day', 'Day'], ['night', 'Night']].map(([k, label]) =>
-        chip(label, store.theme === k, () => { store.theme = k; applyTheme(); onThemeChange.forEach(f => f()); build(); }, { size: 15 }))),
-      el('div', { class: 'gap18' }, button('Done', () => d.close())),
-      ...(isApp ? [] : [el('p', { class: 'about' },
+      el('div', { class: 'picks around gap16' }, ...[['system', 'Auto'], ['day', 'Day'], ['night', 'Night']].map(([k, label]) =>
+        pick(label, store.theme === k, () => { store.theme = k; applyTheme(); onThemeChange.forEach(f => f()); build(); }))),
+      ...(isApp ? [] : [el('p', { class: 'about gap16' },
         'Playing on Android? ', el('a', { href: './Fenceline.apk', download: '' }, 'Download the app'), '.')]),
     );
   };
@@ -54,102 +103,100 @@ export function settingsDialog(onDone) {
   return d;
 }
 
-export function rulesDialog() {
-  let d;
-  const col = el('div', { class: 'col' },
-    text('How to play', { size: 26, bold: true }),
-    text('Join the dots into one closed fence, like a rubber band laid on the board.', { size: 16 }),
-    el('ul', { class: 'rules' },
-      el('li', { text: "A number tells how many of its square's 4 sides are fence. It doesn't say which." }),
-      el('li', { text: 'Squares without a number can have any count.' }),
-      el('li', { text: 'Every dot has two fence pieces touching it, or none. So the fence never stops, splits or crosses.' }),
-      el('li', { text: "There's only one fence, and it goes all the way around." })),
-    text('Tap the gap between two dots to draw a fence, and tap it again to clear it. Press and hold a gap to mark it X (a gap that stays empty), or switch the Pen to X. With Pen: Draw, drag from dot to dot to draw (two fingers move the board). Pinch to zoom, drag to move, and double-tap an empty spot to see the whole board.', { size: 16 }),
-    el('div', { class: 'gap16' }, button('Got it', () => d.close())),
-  );
-  d = dialog(col);
-}
-
 export function codeDialog() {
   let d;
-  const input = el('input', { class: 'codein', type: 'text', placeholder: 'F1-…', autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false' });
-  const error = text('', { size: 15, color: 'error' });
+  const input = el('input', { class: 'codein', type: 'text', placeholder: 'F1-…', 'aria-label': 'Puzzle code', autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false' });
+  input.style.textAlign = 'center'; input.style.fontSize = '22px';
+  const error = text('', { size: 15, color: 'error', cls: 'center' });
   const play = () => {
     const code = PuzzleCode.find(input.value);
     if (!code) error.textContent = "Hmm, that's not a puzzle code.";
     else { d.close(); openGame({ mode: 'code', code: code.toString() }); }
   };
   input.addEventListener('keydown', e => { if (e.key === 'Enter') play(); });
-  const kids = [
-    text('Enter a code', { size: 24, bold: true }),
-    text("Paste a friend's puzzle code.", { size: 15, color: 'inkSoft' }),
-    sk(el('div', { class: 'inputbox' }, input), { stroke: 'inkSoft', width: 1.6 }),
-    error,
-  ];
+  const kids = [sk(el('div', { class: 'field' }, input), { kind: 'under', stroke: 'ink' }), error];
   if (canReadClipboard()) {
-    kids.push(el('div', { class: 'gap6' }, button('Paste', async () => {
+    const paste = el('button', { type: 'button', class: 'pick', style: 'padding:8px 16px;font-size:16px;color:var(--ink)' },
+      el('span', { class: 'lbl', style: 'display:inline-flex;gap:8px;align-items:center' }, icon('paste', 18), 'Paste'));
+    paste.addEventListener('click', async () => {
       const t = await readClipboard();
       if (t == null) return;
       const c = PuzzleCode.find(t || ''); input.value = c ? c.toString() : (t || '').trim();
-    }, { size: 15 })));
+    });
+    kids.push(el('div', { class: 'center' }, sk(paste, { kind: 'wash', fill: 'paperShade' })));
   }
-  kids.push(el('div', { class: 'row gap12' }, button('Cancel', () => d.close(), { size: 17 }), button('Play', play, { size: 17, accent: 'accent' })));
+  kids.push(el('div', { class: 'gap14' }, button('Play', play, { size: 22, kind: 'primary' })));
   d = dialog(el('div', { class: 'col' }, ...kids));
   setTimeout(() => input.focus(), 50);
 }
 
+/** A one-line date like "Nov 27" (or "Today"). */
+const shortDate = iso => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  const t = new Date();
+  if (d.toDateString() === t.toDateString()) return 'Today';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+/** Stats at a glance, with the history of solved puzzles right under them. */
 export function statsDialog() {
   let d;
-  const kids = [text('Stats', { size: 26, bold: true })];
-  for (const diff of ['EASY', 'MEDIUM', 'HARD']) {
+  const stat = (n, k, s) => el('div', {}, el('div', { class: 'n' }, n), el('div', { class: 'k', text: k }), el('div', { class: 's', text: s || ' ' }));
+  const cells = ['EASY', 'MEDIUM', 'HARD'].map(diff => {
     const n = store.solved(diff);
-    const avg = n > 0 ? formatTime(store.totalTime(diff) / n) : '–';
-    kids.push(text(`${cap(diff)}: ${n} solved, average ${avg}`, { size: 17, bold: true, cls: 'gap12' }));
-    const bests = [];
-    for (const sh of Shape.entries) for (const s of Boards.sizes(sh)) {
-      const [w, h] = s.split('x').map(Number);
-      const b = store.best(Boards.key(sh, w, h), diff);
-      if (b > 0) bests.push(`${Boards.label(sh, w, h)} ${formatTime(b)}`);
-    }
-    kids.push(text(bests.length ? 'Best (no hints): ' + bests.join(', ') : 'No best times yet', { size: 15, color: 'inkSoft' }));
-  }
-  kids.push(text(`Solved without hints: ${store.noHintWins}`, { size: 16, cls: 'gap14' }));
-  kids.push(text(`Daily streak: ${store.dailyStreak}  (best ${store.bestStreak})`, { size: 16 }));
-  kids.push(el('div', { class: 'row gap16' }, button('History', () => { d.close(); historyDialog(); }, { size: 17 }), button('Close', () => d.close(), { size: 17 })));
-  d = dialog(el('div', { class: 'col' }, ...kids));
-}
+    return stat(String(n), diffLabel(diff), n > 0 ? 'avg ' + formatTime(store.totalTime(diff) / n) : '');
+  });
+  const sh = store.lastShape, size = store.lastSize, diff = store.lastDifficulty;
+  const [w, h] = size.split('x').map(Number);
+  const best = store.best(Boards.key(sh, w, h), diff);
+  cells.push(
+    stat(el('span', { style: 'display:inline-flex;align-items:center' }, icon('candle', 22, 'var(--hint)'), String(store.dailyStreak)), 'streak', `best ${store.bestStreak}`),
+    stat(best > 0 ? formatTime(best) : '–', 'best ' + Boards.label(sh, w, h), diffLabel(diff) + ', no hints'),
+    stat(String(store.noHintWins), 'no-hint', 'solves'));
+  const kids = [el('div', { class: 'stat3' }, ...cells), el('hr', { class: 'divider gap8' })];
 
-export function historyDialog() {
-  let d;
-  const kids = [text('History', { size: 26, bold: true })];
-  const items = store.history;
-  if (!items.length) kids.push(text('Solved puzzles will show up here.', { size: 16, color: 'inkSoft', cls: 'gap8' }));
-  const fmt = iso => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-    if (!m) return iso;
-    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
   const note = text('', { size: 15, color: 'inkSoft' });
-  for (const h of items) {
-    const code = PuzzleCode.find(h.code);
+  const items = store.history;
+  if (!items.length) kids.push(text('Solved puzzles will show up here.', { size: 16, color: 'inkSoft', cls: 'center' }));
+  let thumbs = 0;
+  for (const hh of items) {
+    const code = PuzzleCode.find(hh.code);
     if (!code) continue;
     const board = `${Boards.label(code.shape, code.width, code.height)} ${diffLabel(code.difficulty)}`;
-    const what = ({ daily: 'Daily · ', coop: 'Co-op · ', versus: 'Versus · ' }[h.kind] || '') + board;
-    const hints = h.hints === 0 ? 'no hints' : `${h.hints} hint${h.hints === 1 ? '' : 's'}`;
-    kids.push(text(what, { size: 17, bold: true, cls: 'gap14' }));
-    kids.push(text(`${formatTime(h.ms)} · ${hints} · ${fmt(h.date)}`, { size: 15, color: 'inkSoft' }));
-    kids.push(el('div', { class: 'row gap6' },
-      button('Play', () => { d.close(); openGame({ mode: 'code', code: code.toString() }); }, { size: 15, accent: 'accent' }),
-      button('Share', () => shareText(`Try this ${board} Fenceline puzzle! I did it in ${formatTime(h.ms)}.\n${SHARE_BASE}${code}\nCode: ${code}`, s => { note.textContent = s; }), { size: 15 })));
+    const what = ({ daily: 'Daily ', coop: 'Co-op ', versus: 'Versus ' }[hh.kind] || '') + board;
+    const hints = hh.hints === 0 ? '' : ` · ${hh.hints} hint${hh.hints === 1 ? '' : 's'}`;
+    const pic = el('div', { style: 'width:54px;height:54px;flex:none' });
+    // The board pictures are drawn in the background, newest first.
+    if (thumbs++ < 12) {
+      factory.gen('thumb', code.width, code.height, code.difficulty, code.seed, code.shape)
+        .then(p => pic.replaceChildren(thumb(p, { faded: false })), () => {});
+    }
+    const replay = el('button', { type: 'button', 'aria-label': 'Play ' + what + ' again' }, icon('restart', 22));
+    replay.addEventListener('click', () => { d.close(); openGame({ mode: 'code', code: code.toString() }); });
+    const share = el('button', { type: 'button', 'aria-label': 'Share ' + what }, icon('share', 22));
+    share.addEventListener('click', () => shareText(`Try this ${board} Fenceline puzzle! I did it in ${formatTime(hh.ms)}.\n${SHARE_BASE}${code}\nCode: ${code}`, s => { note.textContent = s; }));
+    kids.push(el('div', { class: 'rowitem' }, pic,
+      el('div', { class: 'grow' }, what, el('span', { class: 'sub', text: `${shortDate(hh.date)} · ${formatTime(hh.ms)}${hints}` })),
+      el('div', { class: 'acts' }, replay, share)));
   }
   kids.push(note);
-  kids.push(el('div', { class: 'gap18' }, button('Close', () => d.close(), { size: 17 })));
-  d = dialog(el('div', { class: 'col' }, ...kids));
+  d = dialog(el('div', { class: 'col', style: 'gap:6px' }, ...kids));
 }
 
 // ---- play together ----
 
-/** Pick versus or co-op and a board, then host or join (MainActivity.playTogetherDialog). */
+/** A big choice button (Online / Same room, Co-op / Versus): shaded in when picked, with a short line under it. */
+function choice(label, sub, ic, selected, onClick) {
+  const b = el('button', { type: 'button', class: 'choice' + (selected ? ' sel' : ''), 'aria-label': label, 'aria-pressed': selected ? 'true' : 'false' });
+  if (ic) b.append(icon(ic, 22));
+  b.append(el('span', { text: label }), el('span', { class: 'sub', text: sub }));
+  b.addEventListener('click', onClick);
+  return selected ? sk(b, { kind: 'shaded', fill: 'accent', stroke: 'accent' }) : sk(b, { stroke: 'inkSoft', width: 1.6 });
+}
+
+/** Pick how to connect, co-op or versus and a board, then host or join. The board starts as your last solo picks. */
 export function playTogetherDialog() {
   let d;
   const col = el('div', { class: 'col' });
@@ -157,35 +204,31 @@ export function playTogetherDialog() {
   let shape = store.lastShape;
   let size = store.lastSize;
   let diff = store.lastDifficulty;
+  let showAll = false;
   // In the Android app, also offer same-room play over Nearby (no internet).
   let via = isApp ? store.mpVia : 'online';
-  const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
+  const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', 'aria-label': 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
   name.value = defaultName();
   const saveName = () => { store.playerName = name.value.trim(); };
   const fill = () => {
     const sizes = Boards.sizes(shape).concat(coop ? GROUP_SIZES[shape.name] : []);
     if (!sizes.includes(size)) size = Boards.defaultSize ? Boards.defaultSize(shape) : Boards.sizes(shape)[1];
-    const kids = [text('Play together', { size: 26, bold: true })];
+    const kids = [];
     if (isApp) {
-      kids.push(el('div', { class: 'row gap12' },
-        chip('Online', via === 'online', () => { via = 'online'; store.mpVia = via; fill(); }),
-        chip('Same room', via === 'nearby', () => { via = 'nearby'; store.mpVia = via; fill(); })));
-      kids.push(text(via === 'nearby' ? 'Android phones close by. No internet needed.' : 'Any phone, anywhere. Needs internet.', { size: 15, color: 'inkSoft' }));
-    } else kids.push(text('Online, with friends anywhere.', { size: 15, color: 'inkSoft' }));
-    kids.push(
-      sk(el('div', { class: 'inputbox' }, name), { stroke: 'inkSoft', width: 1.6 }),
-      el('div', { class: 'row gap12' },
-        chip('Versus', !coop, () => { coop = false; fill(); }),
-        chip('Co-op', coop, () => { coop = true; fill(); })),
-      text(coop ? 'Draw one loop together.' : 'Same puzzle, first loop wins.', { size: 15, color: 'inkSoft' }),
-      el('div', { class: 'row gap6' }, ...Shape.entries.map(sh => chip(sh.label, shape === sh, () => { shape = sh; fill(); }, { size: 13 }))),
-      text(`${shape.label} board`, { size: 15, color: 'inkSoft' }),
-    );
-    for (let i = 0; i < sizes.length; i += 4) {
-      kids.push(el('div', { class: 'row gap6' }, ...sizes.slice(i, i + 4).map(s =>
-        chip(s.replace('x', '×'), size === s, () => { size = s; fill(); }))));
+      kids.push(el('div', { class: 'choices' },
+        choice('Online', 'friends anywhere', 'people', via === 'online', () => { via = 'online'; store.mpVia = via; fill(); }),
+        choice('Same room', 'phones nearby', 'ping', via === 'nearby', () => { via = 'nearby'; store.mpVia = via; fill(); })));
     }
-    kids.push(el('div', { class: 'row gap6' }, ...['EASY', 'MEDIUM', 'HARD'].map(dd => chip(cap(dd), diff === dd, () => { diff = dd; fill(); }))));
+    kids.push(
+      el('div', { class: 'choices' },
+        choice('Co-op', 'one shared loop', 'pen', coop, () => { coop = true; fill(); }),
+        choice('Versus', 'first loop wins', 'arrow', !coop, () => { coop = false; fill(); })),
+      sk(el('div', { class: 'field gap8' }, name), { kind: 'under', stroke: 'inkSoft' }),
+      el('hr', { class: 'divider' }),
+      el('div', { class: 'row shapes' }, ...Shape.entries.map(sh => shapeChip(sh, shape === sh, () => { shape = sh; fill(); }))),
+      ...sizePicks(sizes, size, s => { size = s; fill(); }, () => showAll, v => { showAll = v; fill(); }),
+      el('div', { class: 'picks around gap12' }, ...['EASY', 'MEDIUM', 'HARD'].map(dd => pick(cap(dd), diff === dd, () => { diff = dd; fill(); }))),
+    );
     const go = role => {
       saveName();
       d.close();
@@ -198,22 +241,23 @@ export function playTogetherDialog() {
       openGame({ mode: 'mp', role: 'host', mpMode: coop ? Mode.COOP : Mode.VERSUS, w, h, d: diff, shape, via });
     };
     kids.push(el('div', { class: 'row gap16' },
-      button('Host', () => go('host'), { size: 18, accent: 'accent' }),
-      button('Join', () => go('join'), { size: 18, accent: 'accent' })));
-    kids.push(el('div', { class: 'gap8' }, button('Close', () => { saveName(); d.close(); }, { size: 16 })));
+      button('Host', () => go('host'), { size: 22, kind: 'primary' }),
+      button('Join', () => go('join'), { size: 22, kind: 'outline' })));
     col.replaceChildren(...kids);
   };
   fill();
-  d = dialog(col);
+  d = dialog(col, { onClose: saveName });
 }
+
 /** Type (or follow a link with) a friend's room code. */
 export function joinDialog(prefill) {
   let d;
-  const code = el('input', { class: 'codein roomin', type: 'text', placeholder: 'ABCD', maxlength: '6', autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false' });
+  const code = el('input', { class: 'codein roomin', type: 'text', placeholder: 'ABCD', 'aria-label': 'Room code', maxlength: '6', autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false' });
+  code.style.textAlign = 'center';
   code.value = (prefill || '').toUpperCase();
-  const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
+  const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', 'aria-label': 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
   name.value = defaultName();
-  const error = text('', { size: 15, color: 'error' });
+  const error = text('', { size: 15, color: 'error', cls: 'center' });
   const go = () => {
     const c = cleanCode(code.value);
     if (c.length !== 4) { error.textContent = 'Room codes have 4 letters.'; return; }
@@ -223,12 +267,12 @@ export function joinDialog(prefill) {
   };
   for (const i of [code, name]) i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
   d = dialog(el('div', { class: 'col' },
-    text('Join a game', { size: 24, bold: true }),
-    text('Type the room code from your friend.', { size: 15, color: 'inkSoft' }),
-    sk(el('div', { class: 'inputbox' }, code), { stroke: 'inkSoft', width: 1.6 }),
-    sk(el('div', { class: 'inputbox' }, name), { stroke: 'inkSoft', width: 1.6 }),
+    text('Room code from your friend', { size: 15, color: 'inkSoft', cls: 'center' }),
+    sk(el('div', { class: 'field' }, code), { kind: 'under', stroke: 'ink' }),
+    sk(el('div', { class: 'field' }, name), { kind: 'under', stroke: 'inkSoft' }),
     error,
-    el('div', { class: 'row gap12' }, button('Cancel', () => d.close(), { size: 17 }), button('Join', go, { size: 17, accent: 'accent' })),
+    el('div', { class: 'gap12' }, button('Join', go, { size: 22, kind: 'primary' })),
   ));
   setTimeout(() => (code.value ? name : code).focus(), 50);
 }
+

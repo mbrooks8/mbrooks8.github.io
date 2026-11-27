@@ -51,6 +51,9 @@ export const store = {
   get lastDifficulty() { const d = get('lastDiff', 'EASY'); return DIFFS.includes(d) ? d : 'EASY'; },
   set lastDifficulty(v) { set('lastDiff', v); },
   get tutorialStep() { return int('tutorialStep', 0); }, set tutorialStep(v) { set('tutorialStep', v); },
+  /** Lessons finished, as a bit per lesson. */
+  lessonDone(i) { return (int('lessonsDone', 0) >> i) & 1; },
+  markLessonDone(i) { set('lessonsDone', int('lessonsDone', 0) | (1 << i)); },
   get seenIntro() { return bool('seenIntro', false); }, set seenIntro(v) { set('seenIntro', v); },
 
   /** Android app: how Play together connects, 'online' or 'nearby'. */

@@ -195,3 +195,70 @@ export function drawBox(ctx, w, h, { fill, stroke, width = 2.2, corner = 10, see
   pencilLine(ctx, r - cr * .4, b, l + cr * .3, b - 1, stroke, sw, seed + 2, 2, dpr);
   pencilLine(ctx, l, b - cr * .4, l + 1, t + cr * .5, stroke, sw, seed + 3, 2, dpr);
 }
+
+/** A loose hand-drawn ring around a w x h box (device pixels), for a picked choice. */
+export function drawRing(ctx, w, h, { stroke, width = 2, seed = 11, dpr = 1 }) {
+  const rnd = rng(seed);
+  const cx = w / 2, cy = h / 2, rx = w / 2 - 2 * dpr, ry = h / 2 - 2 * dpr;
+  ctx.save();
+  ctx.strokeStyle = stroke; ctx.lineWidth = width * dpr; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.globalAlpha = pass ? 0.35 : 0.9;
+    ctx.beginPath();
+    const start = rnd() * 6.28, steps = 26, turns = 1.1;
+    for (let i = 0; i <= steps; i++) {
+      const a = start + (i / steps) * 6.283 * turns;
+      const k = 1 + (rnd() - 0.5) * 0.06 + (i / steps) * 0.05;
+      const x = cx + Math.cos(a) * rx * k, y = cy + Math.sin(a) * ry * k;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** A button shaded in with pencil: a tinted fill, diagonal strokes and a pencil outline (device pixels). */
+export function drawShaded(ctx, w, h, { fill, stroke, seed = 11, dpr = 1 }) {
+  const rnd = rng(seed);
+  const inset = 2 * dpr, l = inset, t = inset, r = w - inset, b = h - inset;
+  ctx.save();
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(l, t, r - l, b - t, 6 * dpr); else ctx.rect(l, t, r - l, b - t);
+  ctx.globalAlpha = 0.82; ctx.fillStyle = fill; ctx.fill();
+  ctx.clip();
+  ctx.globalAlpha = 0.55; ctx.strokeStyle = stroke; ctx.lineWidth = 1.6 * dpr; ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let x = -h; x < w + h; x += 4.6 * dpr) {
+    const o = (rnd() - 0.5) * 2 * dpr;
+    ctx.moveTo(x + o, b); ctx.lineTo(x + o + h * 0.45, t);
+  }
+  ctx.stroke();
+  ctx.restore();
+  pencilLine(ctx, l, t, r, t + 1, stroke, 2 * dpr, seed, 2, dpr);
+  pencilLine(ctx, r, t, r - 1, b, stroke, 2 * dpr, seed + 1, 2, dpr);
+  pencilLine(ctx, r, b, l, b - 1, stroke, 2 * dpr, seed + 2, 2, dpr);
+  pencilLine(ctx, l, b, l + 1, t, stroke, 2 * dpr, seed + 3, 2, dpr);
+}
+
+/** A soft round wash of colour (no outline unless [stroke]), like a watercolour blob. */
+export function drawWash(ctx, w, h, { fill, stroke = null, dpr = 1 }) {
+  ctx.save();
+  ctx.beginPath();
+  const r = Math.min(w, h) * 0.42;
+  if (ctx.roundRect) ctx.roundRect(1, 1, w - 2, h - 2, r); else ctx.rect(1, 1, w - 2, h - 2);
+  ctx.fillStyle = fill; ctx.fill();
+  if (stroke) { ctx.strokeStyle = stroke; ctx.globalAlpha = 0.5; ctx.lineWidth = 1.2 * dpr; ctx.stroke(); }
+  ctx.restore();
+}
+
+/** A pencil underline along the bottom of the box. */
+export function drawUnderline(ctx, w, h, { stroke, width = 2, seed = 11, dpr = 1 }) {
+  pencilLine(ctx, 3 * dpr, h - 3 * dpr, w - 3 * dpr, h - 2 * dpr, stroke, width * dpr, seed, 2, dpr);
+}
+
+/** Black or cream text, whichever reads better on [hex]. */
+export function inkOn(hex, ink, cream) {
+  const [r, g, b] = hexToRgb(hex);
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum > 0.55 ? ink : cream;
+}
