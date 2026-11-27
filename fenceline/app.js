@@ -1,12 +1,16 @@
 // Fenceline for the web: main menu, game screen, lessons and dialogs.
 // Mirrors MainActivity.kt and GameActivity.kt from the Android app (Play together runs online here; no leaderboards).
+// native.js comes first: inside the Android app it imports the old app's data before anything reads it.
+import './compat.js';
+import { isApp, share as nativeShare, copyText, readClipboard, canReadClipboard, canVibrate, canKeepAwake, keepScreenOn, deviceName, setBackHandler, onNative, parseLink } from './native.js';
 import { Shape, Edge, Grid, Puzzle, PuzzleCode, PuzzleGenerator, Game, Tutorial, Boards, dailySeed } from './core.js';
 import { store, formatTime } from './store.js';
-import { theme, applyTheme, onThemeChange, el, text, button, chip, row, dialog, sk, setLabel, closeTopDialog, closeAllDialogs, redrawBoxes } from './ui.js';
+import { theme, applyTheme, onThemeChange, el, text, button, chip, row, dialog, sk, setLabel, closeTopDialog, closeAllDialogs, topDialog, redrawBoxes } from './ui.js';
 import { BoardView } from './board.js';
 import { PENCILS, pencilColor, pencilLine } from './sketch.js';
 import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
 import { Link, cleanCode } from './net.js';
+import { NearbyLink } from './nearby.js';
 
 const SHARE_BASE = 'https://mbrooks8.github.io/fenceline/?p=';
 const JOIN_BASE = 'https://mbrooks8.github.io/fenceline/?join=';
@@ -102,15 +106,7 @@ const factory = {
 
 // ---- keep the screen on while playing ----
 
-let wakeLock = null;
-async function keepAwake(on) {
-  try {
-    if (on && !wakeLock && navigator.wakeLock && document.visibilityState === 'visible') {
-      wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => { wakeLock = null; });
-    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
-  } catch (e) { wakeLock = null; }
-}
+const keepAwake = on => keepScreenOn(on);
 
 // ---- shared dialogs ----
 
@@ -130,8 +126,8 @@ function settingsDialog(onDone) {
       toggle('Show mistakes', 'showErrors'),
       toggle('Auto-X around finished numbers', 'autoCross'),
       toggle('Show timer', 'showTimer'),
-      ...(navigator.vibrate ? [toggle('Vibrate', 'haptics')] : []),
-      ...(navigator.wakeLock ? [toggle('Keep screen on', 'keepAwake')] : []),
+      ...(canVibrate() ? [toggle('Vibrate', 'haptics')] : []),
+      ...(canKeepAwake() ? [toggle('Keep screen on', 'keepAwake')] : []),
       text('Challenge', { size: 17, bold: true, cls: 'gap14' }),
       toggle('No hints', 'noHints'),
       toggle('Plain numbers (no glow when done)', 'plainNumbers'),
@@ -146,8 +142,8 @@ function settingsDialog(onDone) {
       row(...[['system', 'Auto'], ['day', 'Day'], ['night', 'Night']].map(([k, label]) =>
         chip(label, store.theme === k, () => { store.theme = k; applyTheme(); onThemeChange.forEach(f => f()); build(); }, { size: 15 }))),
       el('div', { class: 'gap18' }, button('Done', () => d.close())),
-      el('p', { class: 'about' },
-        'Playing on Android? ', el('a', { href: './Fenceline.apk', download: '' }, 'Download the app'), '.'),
+      ...(isApp ? [] : [el('p', { class: 'about' },
+        'Playing on Android? ', el('a', { href: './Fenceline.apk', download: '' }, 'Download the app'), '.')]),
     );
   };
   build();
@@ -172,22 +168,12 @@ function rulesDialog() {
 }
 
 async function shareText(textBody, note) {
-  if (navigator.share) {
-    try { await navigator.share({ text: textBody }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
-  }
-  const ok = await copy(textBody);
-  if (note) note(ok ? 'Copied! Paste it to a friend.' : textBody);
+  const how = await nativeShare(textBody);
+  if (how === 'shared') return;
+  if (note) note(how === 'copied' ? 'Copied! Paste it to a friend.' : textBody);
 }
 
-async function copy(s) {
-  try { await navigator.clipboard.writeText(s); return true; } catch (e) { /* fall back */ }
-  const t = el('textarea', { style: { position: 'fixed', opacity: '0' } });
-  t.value = s; document.body.append(t); t.select();
-  let ok = false;
-  try { ok = document.execCommand('copy'); } catch (e) { /* ignore */ }
-  t.remove();
-  return ok;
-}
+const copy = s => copyText(s);
 
 // ---- screens ----
 
@@ -336,9 +322,11 @@ function codeDialog() {
     sk(el('div', { class: 'inputbox' }, input), { stroke: 'inkSoft', width: 1.6 }),
     error,
   ];
-  if (navigator.clipboard && navigator.clipboard.readText) {
+  if (canReadClipboard()) {
     kids.push(el('div', { class: 'gap6' }, button('Paste', async () => {
-      try { const t = await navigator.clipboard.readText(); const c = PuzzleCode.find(t || ''); input.value = c ? c.toString() : (t || '').trim(); } catch (e) { /* denied */ }
+      const t = await readClipboard();
+      if (t == null) return;
+      const c = PuzzleCode.find(t || ''); input.value = c ? c.toString() : (t || '').trim();
     }, { size: 15 })));
   }
   kids.push(el('div', { class: 'row gap12' }, button('Cancel', () => d.close(), { size: 17 }), button('Play', play, { size: 17, accent: 'accent' })));
@@ -405,15 +393,22 @@ function playTogetherDialog() {
   let shape = store.lastShape;
   let size = store.lastSize;
   let diff = store.lastDifficulty;
+  // In the Android app, also offer same-room play over Nearby (no internet).
+  let via = isApp ? store.mpVia : 'online';
   const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
-  name.value = store.playerName;
+  name.value = defaultName();
   const saveName = () => { store.playerName = name.value.trim(); };
   const fill = () => {
     const sizes = Boards.sizes(shape).concat(coop ? GROUP_SIZES[shape.name] : []);
     if (!sizes.includes(size)) size = Boards.defaultSize ? Boards.defaultSize(shape) : Boards.sizes(shape)[1];
-    const kids = [
-      text('Play together', { size: 26, bold: true }),
-      text('Online, with friends anywhere.', { size: 15, color: 'inkSoft' }),
+    const kids = [text('Play together', { size: 26, bold: true })];
+    if (isApp) {
+      kids.push(el('div', { class: 'row gap12' },
+        chip('Online', via === 'online', () => { via = 'online'; store.mpVia = via; fill(); }),
+        chip('Same room', via === 'nearby', () => { via = 'nearby'; store.mpVia = via; fill(); })));
+      kids.push(text(via === 'nearby' ? 'Android phones close by. No internet needed.' : 'Any phone, anywhere. Needs internet.', { size: 15, color: 'inkSoft' }));
+    } else kids.push(text('Online, with friends anywhere.', { size: 15, color: 'inkSoft' }));
+    kids.push(
       sk(el('div', { class: 'inputbox' }, name), { stroke: 'inkSoft', width: 1.6 }),
       el('div', { class: 'row gap12' },
         chip('Versus', !coop, () => { coop = false; fill(); }),
@@ -421,7 +416,7 @@ function playTogetherDialog() {
       text(coop ? 'Draw one loop together.' : 'Same puzzle, first loop wins.', { size: 15, color: 'inkSoft' }),
       el('div', { class: 'row gap6' }, ...Shape.entries.map(sh => chip(sh.label, shape === sh, () => { shape = sh; fill(); }, { size: 13 }))),
       text(`${shape.label} board`, { size: 15, color: 'inkSoft' }),
-    ];
+    );
     for (let i = 0; i < sizes.length; i += 4) {
       kids.push(el('div', { class: 'row gap6' }, ...sizes.slice(i, i + 4).map(s =>
         chip(s.replace('x', '×'), size === s, () => { size = s; fill(); }))));
@@ -430,9 +425,13 @@ function playTogetherDialog() {
     const go = role => {
       saveName();
       d.close();
-      if (role === 'join') { joinDialog(''); return; }
+      if (role === 'join') {
+        if (via === 'nearby') openGame({ mode: 'mp', role: 'join', via });
+        else joinDialog('');
+        return;
+      }
       const [w, h] = size.split('x').map(Number);
-      openGame({ mode: 'mp', role: 'host', mpMode: coop ? Mode.COOP : Mode.VERSUS, w, h, d: diff, shape });
+      openGame({ mode: 'mp', role: 'host', mpMode: coop ? Mode.COOP : Mode.VERSUS, w, h, d: diff, shape, via });
     };
     kids.push(el('div', { class: 'row gap16' },
       button('Host', () => go('host'), { size: 18, accent: 'accent' }),
@@ -444,13 +443,16 @@ function playTogetherDialog() {
   d = dialog(col);
 }
 
+/** The name other players see: what you typed last time, else (in the app) this phone's name. */
+function defaultName() { return store.playerName || deviceName(); }
+
 /** Type (or follow a link with) a friend's room code. */
 function joinDialog(prefill) {
   let d;
   const code = el('input', { class: 'codein roomin', type: 'text', placeholder: 'ABCD', maxlength: '6', autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false' });
   code.value = (prefill || '').toUpperCase();
   const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
-  name.value = store.playerName;
+  name.value = defaultName();
   const error = text('', { size: 15, color: 'error' });
   const go = () => {
     const c = cleanCode(code.value);
@@ -506,7 +508,8 @@ function showGame(opts) {
   let mpMode = opts.mpMode || Mode.VERSUS, mpW = opts.w || 7, mpH = opts.h || 7, mpDiff = opts.d || 'EASY', mpShape = opts.shape || Shape.SQUARE;
   let lobbyD = null, lobbyCol = null, lobbyStatus = '', resultsD = null, resultsCol = null;
   let countingDown = false, hostPuzzle = null, startWhenReady = false, lastSentProgress = -1, lastProgAt = 0, progTimer = 0;
-  let lastLocalEdit = 0, round = 0, syncTimer = 0, countTimer = 0, roomCode = opts.code || '';
+  let lastLocalEdit = -Infinity, round = 0, syncTimer = 0, countTimer = 0, roomCode = opts.code || '';
+  const nearby = opts.via === 'nearby'; // Android app, same room over Nearby (else online)
   const progress = new Map(), finished = new Map(); // finished: player -> [ms, hints, place]
   const hintsOff = () => store.noHints && mode !== 'tutorial';
 
@@ -916,6 +919,7 @@ function showGame(opts) {
       updatePlayers(); fillResults();
     },
     onDenied() { lobbyStatus = 'The host said not now.'; fillLobby(); },
+    onHostsChanged() { fillLobby(); },
     onError(t) { lobbyStatus = t; fillLobby(); if (!lobbyD) setNote(t); },
     onStatus(t) {
       if (game && mode === 'mp') { if (t) laterNote(t); }
@@ -946,21 +950,28 @@ function showGame(opts) {
   };
 
   const openLink = async role => {
-    link = new Link();
+    link = nearby ? new NearbyLink() : new Link();
     link.ui = linkUi;
-    lobbyStatus = role === 'host' ? 'Making a room…' : `Looking for room ${roomCode.toUpperCase()}…`;
+    lobbyStatus = nearby ? 'Starting Nearby…' : role === 'host' ? 'Making a room…' : `Looking for room ${roomCode.toUpperCase()}…`;
     showLobby();
     const myLink = link;
+    const myName = defaultName();
     try {
       if (role === 'host') {
         prepareNextPuzzle();
-        room = await link.host(store.playerName || 'Host', store.pencil, store.installId);
+        room = nearby
+          ? await link.host(myName || 'Host', store.pencil, store.installId, { coop: mpMode === Mode.COOP, board: `${mpW}x${mpH} ${diffLabel(mpDiff)}` })
+          : await link.host(myName || 'Host', store.pencil, store.installId);
         if (disposed || link !== myLink) { myLink.close(); return; }
         room.setup = setupText();
-        roomCode = room.roomId;
-        lobbyStatus = 'Send your friends the code.';
+        if (!nearby) roomCode = room.roomId;
+        lobbyStatus = nearby ? 'Visible to nearby phones.' : 'Send your friends the code.';
+      } else if (nearby) {
+        room = await link.look(myName || '', store.pencil, store.installId);
+        if (disposed || link !== myLink) { myLink.close(); return; }
+        lobbyStatus = 'Searching nearby…';
       } else {
-        room = await link.join(roomCode, store.playerName || '', store.pencil, store.installId);
+        room = await link.join(roomCode, myName || '', store.pencil, store.installId);
         if (disposed || link !== myLink) { myLink.close(); return; }
         lobbyStatus = 'Asking to join…';
       }
@@ -1005,9 +1016,15 @@ function showGame(opts) {
     if (!col) return;
     const r = room;
     const kids = [];
-    if (!r || (!r.isHost && r.me < 0)) {
-      kids.push(text(opts.role === 'host' && !r ? 'Making a room…' : 'Joining…', { size: 24, bold: true }));
-      if (roomCode) kids.push(text(`Room ${roomCode.toUpperCase()}`, { size: 15, color: 'inkSoft' }));
+    if (nearby && r && !r.isHost && r.me < 0) {
+      // Same room: pick a game from the phones close by (as in the 1.x app).
+      kids.push(text('Looking for games…', { size: 24, bold: true }));
+      const hosts = link && link.hosts ? [...link.hosts.values()] : [];
+      if (!hosts.length) kids.push(text('Ask a friend to tap Host.', { size: 15, color: 'inkSoft' }));
+      for (const h of hosts) kids.push(button(h.title, () => { lobbyStatus = 'Asking to join…'; fillLobby(); link.join(h.id); }, { size: 16, accent: 'accent' }));
+    } else if (!r || (!r.isHost && r.me < 0)) {
+      kids.push(text(opts.role === 'host' && !r ? (nearby ? 'Starting Nearby…' : 'Making a room…') : nearby ? 'Looking for games…' : 'Joining…', { size: 24, bold: true }));
+      if (roomCode && !nearby) kids.push(text(`Room ${roomCode.toUpperCase()}`, { size: 15, color: 'inkSoft' }));
     } else {
       const ready = r.here.length >= 2;
       kids.push(text(r.isHost ? (ready ? 'Ready when you are!' : 'Waiting for friends…') : "You're in!", { size: 24, bold: true }));
@@ -1015,7 +1032,7 @@ function showGame(opts) {
       const label = r.isHost ? `${mpMode === Mode.COOP ? 'Co-op' : 'Versus'} · ${boardLabelOf(mpShape, mpW, mpH, mpDiff)}`
         : setup && setup.length >= 5 ? `${setup[0] === Mode.COOP ? 'Co-op' : 'Versus'} · ${boardLabelOf(Shape.entries.find(x => x.name === setup[1]) || Shape.SQUARE, setup[2], setup[3], setup[4])}` : '';
       if (label) kids.push(text(label, { size: 15, color: 'inkSoft' }));
-      if (r.isHost) {
+      if (r.isHost && !nearby) {
         kids.push(el('div', { class: 'roomcode' }, el('div', { class: 'lbl2', text: 'Room code' }), el('div', { class: 'big', text: r.roomId.toUpperCase() })));
         kids.push(button('Share invite', shareInvite, { size: 16 }));
       }
@@ -1258,7 +1275,7 @@ function showGame(opts) {
   } else if (mode === 'code') {
     const code = PuzzleCode.find(opts.code || '');
     if (!code) { showMenu(); return; }
-    if (isAndroid) {
+    if (isAndroid && !isApp) {
       const href = `intent://p/${encodeURIComponent(code)}#Intent;scheme=fenceline;package=com.fenceline.app;end`;
       appLink.replaceChildren('Got the Android app? ', el('a', { href }, 'Open it there'));
       appLink.hidden = false;
@@ -1276,29 +1293,55 @@ function boot() {
   // iOS: stop page-level pinch zoom; the board has its own.
   document.addEventListener('gesturestart', e => e.preventDefault());
   const params = new URLSearchParams(location.search);
-  const raw = (params.get('p') || params.get('code') || '').replace(/\s+/g, '');
-  const joinCode = cleanCode(params.get('join') || '');
-  const code = raw ? PuzzleCode.find(raw) : null;
-  if (raw || params.has('join')) {
+  const hasLink = params.has('p') || params.has('code') || params.has('join');
+  const startUrl = location.href;
+  if (hasLink) {
     // Keep the address clean, so a reload or a home-screen launch opens the menu.
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
   }
   showMenu();
-  if (code) {
-    store.seenIntro = true; // a friend's puzzle comes first; the lessons stay under Learn
-    document.title = 'Fenceline puzzle ' + code;
-    openGame({ mode: 'code', code: code.toString() });
-    setTimeout(() => { document.title = 'Fenceline'; }, 4000);
-  } else if (joinCode) {
-    store.seenIntro = true;
-    joinDialog(joinCode.toUpperCase());
-  } else if (!store.seenIntro) {
+  if (!(hasLink && openLinkUrl(startUrl)) && !store.seenIntro) {
     store.seenIntro = true;
     openGame({ mode: 'tutorial', step: 0 });
   }
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  if (isApp) {
+    // Android app: links tapped while it's open, and the back button.
+    onNative('open-url', e => { if (e && e.url) openLinkUrl(e.url); });
+    setBackHandler(() => {
+      const d = topDialog();
+      if (d && d.cancelable) { d.close(); return true; }
+      if (screen && screen.name === 'game') { leaveGame(); return true; } // also leaves a lobby or a finished game
+      if (d) { closeAllDialogs(); return true; }
+      return false;
+    });
+  } else if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    // The app has its files on the phone already; the website keeps a copy for offline play.
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
+}
+
+/** Opens a shared puzzle or a room invite. Returns false when the link holds neither. */
+function openLinkUrl(url) {
+  const l = parseLink(url);
+  if (!l) return false;
+  const code = l.code ? PuzzleCode.find(String(l.code).replace(/\s+/g, '')) : null;
+  const joinCode = l.join ? cleanCode(l.join) : '';
+  if (code) {
+    store.seenIntro = true; // a friend's puzzle comes first; the lessons stay under Learn
+    closeAllDialogs();
+    document.title = 'Fenceline puzzle ' + code;
+    openGame({ mode: 'code', code: code.toString() });
+    setTimeout(() => { document.title = 'Fenceline'; }, 4000);
+    return true;
+  }
+  if (joinCode) {
+    store.seenIntro = true;
+    const show = () => { closeAllDialogs(); joinDialog(joinCode.toUpperCase()); };
+    // Leaving a game goes back through history, which lands a moment later.
+    if (screen && screen.name === 'game') { leaveGame(); setTimeout(show, 250); } else show();
+    return true;
+  }
+  return false;
 }
 
 if (document.fonts && document.fonts.load) {

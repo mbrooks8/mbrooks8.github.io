@@ -3,6 +3,7 @@
 // drag with one or two fingers to move the board. Dragging never draws.
 import { Edge } from './core.js';
 import { pencilLine, pencilCircle, pencilHatch, blend, rgba } from './sketch.js';
+import { vibrate } from './native.js';
 
 const PING_MS = 2500;
 
@@ -314,7 +315,7 @@ export class BoardView {
     return best;
   }
 
-  buzz(ms = 8) { if (this.haptics && navigator.vibrate) try { navigator.vibrate(ms); } catch (e) { /* ignore */ } }
+  buzz(ms = 8) { if (this.haptics) vibrate(ms); }
 
   clampPan() {
     const g = this.game && this.game.grid;
