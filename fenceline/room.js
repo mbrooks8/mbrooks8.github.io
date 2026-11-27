@@ -63,6 +63,12 @@ export const Msg = {
   },
 };
 
+/** A name to match a returning player by ('' for blank or made-up "Friend 3" names). */
+function sameName(s) {
+  const n = String(s || '').trim().toLowerCase();
+  return !n || /^friend( \d+)?$/.test(n) ? '' : n;
+}
+
 function newRoomId() {
   const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
   let s = '';
@@ -180,11 +186,27 @@ export class Room {
   }
 
   returningSeat(hello) {
-    if (!hello.id) return -1;
-    const id = hello.id.slice(0, 24);
+    const id = (hello.id || '').slice(0, 24);
     // The same device (same id) is coming back, even if its old connection hasn't timed out yet.
-    for (let i = 0; i < SEATS; i++) if (i !== this.me && this.seatIds[i] === id) return i;
+    if (id) for (let i = 0; i < SEATS; i++) if (i !== this.me && this.seatIds[i] === id) return i;
+    // Same person on another browser or app (an iPhone link opens Safari, not the home-screen app):
+    // give them back the seat of an away player with the same name.
+    const nm = sameName(hello.name);
+    if (nm) for (let i = 0; i < SEATS; i++) if (i !== this.me && this.away[i] && sameName(this.names[i]) === nm) return i;
     return -1;
+  }
+
+  /** Away seats that are this same player again (left over from older versions): fold them away. */
+  dropDuplicates(seat, hello) {
+    const id = (hello.id || '').slice(0, 24), nm = sameName(hello.name);
+    let n = 0;
+    for (let i = 0; i < SEATS; i++) {
+      if (i === seat || i === this.me || !this.away[i] || this.names[i] == null) continue;
+      if ((id && this.seatIds[i] === id) || (nm && sameName(this.names[i]) === nm)) {
+        this.names[i] = null; this.seatIds[i] = null; this.away[i] = false; n++;
+      }
+    }
+    return n;
   }
 
   hostReceive(peer, msg) {
@@ -241,6 +263,8 @@ export class Room {
     this.names[seat] = (hello.name || '').trim() ? hello.name : `Friend ${seat}`;
     this.away[seat] = false;
     this.seatIds[seat] = (hello.id || '').slice(0, 24) || null;
+    // Fold away any leftover duplicate seats of the people who are here (this one and the rest).
+    for (const p of this.players) if (!this.away[p]) this.dropDuplicates(p, { id: this.seatIds[p], name: this.names[p] });
     if (back < 0) this.pencils[seat] = this.freePencil(hello.pencil, seat);
     this._send(peer, Msg.encode({ t: 'WELCOME', player: seat }));
     this.broadcast(this.lobby());
