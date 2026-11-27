@@ -176,7 +176,7 @@ export function createPlay(ctx) {
 
   const startMultiplayer = async () => {
     ctx.mode = 'mp';
-    title.replaceChildren(el('div', { class: 'head', text: 'Play together' }));
+    title.replaceChildren();
     loading.textContent = '';
     showLoading();
     openLink(opts.role === 'join' ? 'join' : 'host');
@@ -255,7 +255,7 @@ export function createPlay(ctx) {
       kids.push(text('Looking for games…', { size: 24, bold: true }));
       const hosts = link && link.hosts ? [...link.hosts.values()] : [];
       if (!hosts.length) kids.push(text('Ask a friend to tap Host.', { size: 15, color: 'inkSoft' }));
-      for (const h of hosts) kids.push(button(h.title, () => { lobbyStatus = 'Asking to join…'; fillLobby(); link.join(h.id); }, { size: 16, accent: 'accent' }));
+      for (const h of hosts) kids.push(button(h.title, () => { lobbyStatus = 'Asking to join…'; fillLobby(); link.join(h.id); }, { size: 16, kind: 'outline' }));
     } else if (!r || (!r.isHost && r.me < 0)) {
       kids.push(text(opts.role === 'host' && !r ? (nearby ? 'Starting Nearby…' : 'Making a room…') : nearby ? 'Looking for games…' : 'Joining…', { size: 24, bold: true }));
       if (roomCode && !nearby) kids.push(text(`Room ${roomCode.toUpperCase()}`, { size: 15, color: 'inkSoft' }));
@@ -272,13 +272,13 @@ export function createPlay(ctx) {
       }
       kids.push(el('div', { class: 'plist' }, ...shownPlayers(r).map(p => dotLine(p, star(p) + (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
       if (r.isHost) {
-        const b = button('Start', () => { if (r.here.length >= 2) launchRound(); }, { size: 18, accent: 'accent' });
+        const b = button('Start', () => { if (r.here.length >= 2) launchRound(); }, { size: 20, kind: 'primary' });
         b.classList.toggle('dim', !ready);
         kids.push(el('div', { class: 'gap8' }, b));
       } else kids.push(text('The host starts the game.', { size: 15, color: 'inkSoft' }));
     }
     if (lobbyStatus) kids.push(text(lobbyStatus, { size: 15, color: 'inkSoft' }));
-    if (!room && link == null) kids.push(button('Try again', () => openLink(opts.role === 'join' ? 'join' : 'host'), { size: 16, accent: 'accent' }));
+    if (!room && link == null) kids.push(button('Try again', () => openLink(opts.role === 'join' ? 'join' : 'host'), { size: 16, kind: 'outline' }));
     kids.push(button('Cancel', () => leaveGame(), { size: 16 }));
     col.replaceChildren(...kids);
   };
@@ -454,7 +454,7 @@ export function createPlay(ctx) {
     if (r) {
       kids.push(button(mpMode === Mode.COOP ? 'Play again' : 'Rematch', () => {
         if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); wantsRematch.add(r.me); setNote('Asked the host for another round…'); fillResults(); }
-      }, { size: 18, accent: 'accent' }));
+      }, { size: 20, kind: 'primary' }));
       if (r.isHost) kids.push(button('Change board', nextBoardDialog, { size: 16 }));
     }
     kids.push(button('Leave', () => leaveGame(), { size: 16 }));
@@ -492,7 +492,7 @@ export function createPlay(ctx) {
           }
           if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
           launchRound();
-        }, { size: 17, accent: 'accent' })));
+        }, { size: 18, kind: 'primary' })));
       col.replaceChildren(...kids);
     };
     fill();
@@ -507,7 +507,7 @@ export function createPlay(ctx) {
       text(returning ? 'Let them back into their seat?' : 'Let them into this game?', { size: 16, color: 'inkSoft' }),
       el('div', { class: 'row gap14' },
         button('Not now', () => { d.close(); r.deny(peer); }, { size: 17 }),
-        button('Let in', () => { d.close(); r.approve(peer); }, { size: 17, accent: 'accent' })),
+        button('Let in', () => { d.close(); r.approve(peer); }, { size: 18, kind: 'primary' })),
     ), { cancelable: false });
   };
 
@@ -519,7 +519,7 @@ export function createPlay(ctx) {
       text('Rejoin to get your seat back, or keep drawing on your own.', { size: 16, color: 'inkSoft' }),
       el('div', { class: 'row gap14' },
         button('Keep drawing', () => { d.close(); setNote('Playing solo.'); updatePlayers(); }, { size: 16 }),
-        button('Rejoin', () => { d.close(); rejoin(); }, { size: 17, accent: 'accent' })),
+        button('Rejoin', () => { d.close(); rejoin(); }, { size: 18, kind: 'primary' })),
     ));
   };
 

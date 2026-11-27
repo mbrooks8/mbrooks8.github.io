@@ -3,13 +3,15 @@
 // native.js comes first: inside the Android app it imports the old app's data before anything reads it.
 import './compat.js';
 import { isApp, setBackHandler, onNative, parseLink } from './native.js';
-import { Shape, Grid, PuzzleCode, Game, Tutorial, Boards } from './core.js';
+import { Shape, PuzzleCode, Game, Boards } from './core.js';
 import { store, formatTime } from './store.js';
-import { theme, applyTheme, onThemeChange, el, text, button, chip, dialog, closeTopDialog, closeAllDialogs, topDialog, redrawBoxes } from './ui.js';
-import { pencilLine } from './sketch.js';
+import { applyTheme, onThemeChange, el, text, button, pick, iconButton, sk, dialog, closeTopDialog, closeAllDialogs, topDialog, redrawBoxes } from './ui.js';
+import { shapeChip } from './shapes.js';
+import { icon } from './icons.js';
 import { cleanCode } from './net.js';
-import { isTodaysDaily, isIOS, diffLabel, standalone, cap, factory } from './common.js';
-import { statsDialog, rulesDialog, settingsDialog, joinDialog, codeDialog, playTogetherDialog } from './dialogs.js';
+import { isTodaysDaily, isIOS, standalone, cap, factory } from './common.js';
+import { statsDialog, settingsDialog, joinDialog, codeDialog, playTogetherDialog, sizePicks } from './dialogs.js';
+import { learnDialog } from './learn.js';
 import { showGame } from './game.js';
 
 const app = document.getElementById('app');
@@ -26,114 +28,58 @@ export function setScreen(name, node, dispose) {
   window.scrollTo(0, 0);
 }
 
-/** Draws a cell of that board shape in pencil, as a picker button. */
-function shapeChip(shape, selected, onClick) {
-  const b = el('button', { type: 'button', class: 'shapechip' + (selected ? ' sel' : ''), 'aria-label': shape.label, 'aria-pressed': selected ? 'true' : 'false' });
-  const c = el('canvas');
-  b.append(c);
-  b.addEventListener('click', onClick);
-  const g = Grid.create(shape, 3, 3);
-  let cell = 0;
-  if (shape === Shape.TRIANGLE) {
-    for (let k = 0; k < g.cellCount; k++) {
-      const ys = Array.from(g.cellVertices[k], v => g.vy[v]).sort((a, b2) => a - b2);
-      if (ys[0] < ys[1] - 1e-6) { cell = k; break; }
-    }
-  }
-  let pts = Array.from(g.cellVertices[cell], v => [g.vx[v], g.vy[v]]);
-  if (shape === Shape.HEX) pts = pts.map(([x, y]) => [y, x]); // flat-top hexagon
-  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  const span = Math.max(maxX - minX, maxY - minY);
-  const poly = pts.map(([x, y]) => [(x - (minX + maxX) / 2) / span, (y - (minY + maxY) / 2) / span]);
-  const draw = () => {
-    const r = b.getBoundingClientRect();
-    if (r.width < 2) return;
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
-    c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
-    const ctx = c.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const inset = 5, size = Math.min(r.width - 2 * inset, r.height - 2 * inset);
-    const cx = r.width / 2, cy = r.height / 2;
-    const P = poly.map(([x, y]) => [cx + x * size, cy + y * size]);
-    ctx.beginPath(); P.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
-    ctx.fillStyle = selected ? `rgba(${hex(theme.accent)},${0x22 / 255})` : theme.pal.card;
-    ctx.fill();
-    const stroke = selected ? theme.accent : theme.pal.inkSoft;
-    const w = selected ? 2.4 : 1.6;
-    for (let i = 0; i < P.length; i++) {
-      const [x0, y0] = P[i], [x1, y1] = P[(i + 1) % P.length];
-      pencilLine(ctx, x0, y0, x1, y1, stroke, w, shape.label.length * 31 + i, 2);
-    }
-    let tx = P.reduce((s, p) => s + p[0], 0) / P.length, ty = P.reduce((s, p) => s + p[1], 0) / P.length;
-    if (P.length === 3) ty += size * 0.12;
-    const xsAt = [];
-    for (let i = 0; i < P.length; i++) {
-      const [x0, y0] = P[i], [x1, y1] = P[(i + 1) % P.length];
-      if ((y0 - ty) * (y1 - ty) <= 0 && y0 !== y1) xsAt.push(x0 + (ty - y0) / (y1 - y0) * (x1 - x0));
-    }
-    const room = xsAt.length >= 2 ? (Math.max(...xsAt) - Math.min(...xsAt)) * 0.86 : r.width * 0.8;
-    let fs = 14;
-    ctx.font = `${fs}px "Coming Soon", "Chalkboard SE", cursive`;
-    const w0 = ctx.measureText(shape.label).width;
-    if (w0 > room) { fs = fs * room / w0; ctx.font = `${fs}px "Coming Soon", "Chalkboard SE", cursive`; }
-    ctx.fillStyle = stroke; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(shape.label, tx, ty);
-  };
-  new ResizeObserver(draw).observe(b);
-  return b;
-}
-function hex(h) { const n = parseInt(h.slice(1), 16); return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`; }
-
 export function showMenu() {
-  const col = el('div', { class: 'menu col' });
+  const col = el('div', { class: 'menu home' });
+  let showAll = false; // "more" sizes open
   const build = () => {
     const kids = [];
     kids.push(el('h1', { class: 'title', text: 'Fenceline' }));
 
-    // Continue.
+    // Daily, with the streak as a little candle.
+    const streak = store.dailyStreak;
+    const daily = el('button', { type: 'button', class: 'daily', 'aria-label': 'Daily puzzle' + (streak ? `, streak ${streak}` : '') + (store.dailyDoneToday ? ', done today' : '') },
+      icon('sun', 30, 'var(--hint)', 1.7),
+      el('span', { class: 'grow', text: 'Daily puzzle' }),
+      store.dailyDoneToday ? icon('check', 20, 'var(--done)', 2.2) : '',
+      streak > 0 ? el('span', { class: 'streak' }, icon('candle', 18, 'var(--hint)'), String(streak)) : '',
+      icon('arrow', 22, 'var(--accent)'));
+    daily.addEventListener('click', () => openGame({ mode: 'daily' }));
+    kids.push(el('div', { class: 'gap22' }, sk(daily, { stroke: 'inkSoft', width: 1.8 })));
+
+    // Continue, a quiet line under the daily.
     let saved = null;
     try { saved = store.savedGame ? Game.load(store.savedGame) : null; } catch (e) { saved = null; }
     if (saved && !saved.isSolved()) {
       const p = saved.puzzle;
-      const label = store.savedMode === 'daily' && isTodaysDaily(p) ? 'Daily puzzle' : store.savedMode === 'tutorial' ? 'Lesson'
-        : `${Boards.label(p.shape, p.width, p.height)} ${diffLabel(p.difficulty)}`;
-      kids.push(el('div', { class: 'gap22' }, button(`Continue  ·  ${label}  ·  ${formatTime(saved.elapsedMs)}`, () => openGame({ mode: 'continue' }), { accent: 'accent' })));
+      const label = store.savedMode === 'daily' && isTodaysDaily(p) ? 'daily' : store.savedMode === 'tutorial' ? 'lesson'
+        : `${Boards.label(p.shape, p.width, p.height)}`;
+      const cont = el('button', { type: 'button', class: 'continue', 'aria-label': `Continue ${label}` },
+        icon('restart', 24, 'var(--done)'), el('span', { class: 'grow', text: 'Continue' }),
+        el('span', { class: 'what', text: `${label} · ${formatTime(saved.elapsedMs)}` }));
+      cont.addEventListener('click', () => openGame({ mode: 'continue' }));
+      kids.push(cont);
     }
 
-    // Daily.
-    const streak = store.dailyStreak;
-    const dailyLabel = store.dailyDoneToday ? `Daily puzzle  ✓  streak ${streak}` : 'Daily puzzle' + (streak > 0 ? `  ·  streak ${streak}` : '');
-    kids.push(el('div', { class: 'gap14' }, button(dailyLabel, () => openGame({ mode: 'daily' }))));
-
-    // New puzzle.
-    kids.push(text('New puzzle', { size: 24, bold: true, cls: 'gap26' }));
-    kids.push(text('Shape', { size: 15, color: 'inkSoft', cls: 'gap4' }));
+    // New puzzle: shape, size, difficulty. No headings; the picks speak for themselves.
     kids.push(el('div', { class: 'row shapes' }, ...Shape.entries.map(sh =>
       shapeChip(sh, store.lastShape === sh, () => { store.lastShape = sh; build(); }))));
-    kids.push(text('Board size', { size: 15, color: 'inkSoft', cls: 'gap10' }));
-    const sizes = Boards.sizes(store.lastShape);
-    for (let i = 0; i < sizes.length; i += 4) {
-      kids.push(el('div', { class: 'row gap6' }, ...sizes.slice(i, i + 4).map(s =>
-        chip(s.replace('x', '×'), store.lastSize === s, () => { store.lastSize = s; build(); }))));
-    }
-    kids.push(text('Difficulty', { size: 15, color: 'inkSoft', cls: 'gap12' }));
-    kids.push(el('div', { class: 'row gap6' }, ...['EASY', 'MEDIUM', 'HARD'].map(d =>
-      chip(cap(d), store.lastDifficulty === d, () => { store.lastDifficulty = d; build(); }))));
-    kids.push(el('div', { class: 'gap14' }, button('Start drawing', () => {
+    kids.push(...sizePicks(Boards.sizes(store.lastShape), store.lastSize, s => { store.lastSize = s; build(); },
+      () => showAll, v => { showAll = v; build(); }));
+    kids.push(el('div', { class: 'picks around gap16' }, ...['EASY', 'MEDIUM', 'HARD'].map(d =>
+      pick(cap(d), store.lastDifficulty === d, () => { store.lastDifficulty = d; build(); }))));
+    kids.push(el('div', { class: 'gap26' }, button('Start drawing', () => {
       const [w, h] = store.lastSize.split('x').map(Number);
       openGame({ mode: 'free', w, h, d: store.lastDifficulty, shape: store.lastShape });
-    }, { size: 20, accent: 'accent' })));
-
-    kids.push(el('div', { class: 'row gap26' }, button('Enter a code', codeDialog, { size: 16 }), button('Play together', () => playTogetherDialog(), { size: 16 })));
-    kids.push(el('div', { class: 'row gap8' },
-      button('Learn', () => openGame({ mode: 'tutorial', step: Math.max(0, Math.min(Tutorial.steps.length - 1, store.tutorialStep)) }), { size: 16 }),
-      button('Stats', statsDialog, { size: 16 }),
-      button('Settings', () => settingsDialog(build), { size: 16 })));
-    kids.push(el('div', { class: 'gap8' }, button('How to play', rulesDialog, { size: 16 })));
+    }, { size: 23, kind: 'primary' })));
+    kids.push(el('div', { class: 'gap14' }, button('Play together', () => playTogetherDialog(), { size: 23, kind: 'outline', icon: 'people' })));
     if (isIOS && !standalone) {
       kids.push(el('p', { class: 'tip' }, 'Tip: tap Share, then “Add to Home Screen” to keep Fenceline on your phone.'));
     }
+    kids.push(el('div', { class: 'homefoot' },
+      iconButton('hash', 'Code', codeDialog, { aria: 'Enter a code' }),
+      iconButton('book', 'Learn', () => learnDialog()),
+      iconButton('chart', 'Stats', statsDialog),
+      iconButton('gear', 'Settings', () => settingsDialog(build))));
     col.replaceChildren(...kids);
     // Warm up a puzzle for the selected settings so Start is instant.
     const [w, h] = store.lastSize.split('x').map(Number);
