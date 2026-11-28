@@ -243,6 +243,7 @@ canvas.board {
 /* stats, learn */
 .stat3 { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; gap: 12px 4px; }
 .stat3 .n { font-size: 30px; color: var(--ink); line-height: 1.1; display: flex; align-items: center; justify-content: center; gap: 2px; }
+.stat3 .wide { grid-column: 1 / -1; }
 .stat3 .k { font-size: 15px; color: var(--inkSoft); }
 .stat3 .s { font-size: 13px; color: var(--inkSoft); }
 .rowitem { display: flex; align-items: center; gap: 14px; padding: 7px 0; font-size: 18px; width: 100%; background: none; border: 0; color: var(--ink); text-align: left; }

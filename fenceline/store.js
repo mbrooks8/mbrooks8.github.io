@@ -88,6 +88,9 @@ export const store = {
   get bestStreak() { return int('bestStreak', 0); },
   get dailyDoneToday() { return get('dailyLast', '') === today(); },
   get noHintWins() { return int('noHintWins', 0); },
+  /** Points earned so far (see points.js). */
+  get points() { return int('points', 0); },
+  addPoints(n) { set('points', this.points + Math.max(0, Math.round(n))); return this.points; },
 
   /** Records a win; returns true when it is a new best time. */
   recordWin(size, d, ms, hints, daily) {

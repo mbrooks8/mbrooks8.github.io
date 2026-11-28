@@ -89,6 +89,15 @@ export function openExternal(url) {
   window.open(url, '_blank', 'noopener');
 }
 
+// ---- Google Play Games leaderboards (Android app only; the web has none) ----
+
+/** True when this app build has leaderboards switched on (Play Games ids filled in). */
+export function gamesOn() { return isApp && call('gamesOn') === true; }
+/** Sends a score to one board (key from points.js). Fire and forget; Play keeps the best. */
+export function gamesSubmit(key, score) { if (gamesOn()) call('gamesSubmit', String(key), String(Math.round(score))); }
+/** Opens Play's own board screen: one board, or all of them when key is empty. Asks the player to sign in first if needed. */
+export function gamesShow(key = '') { call('gamesShow', String(key)); }
+
 export function deviceName() { return isApp ? String(call('deviceName') || '').slice(0, 20) : ''; }
 
 /** Can this app save a file to the phone (video from the replay)? Older app builds can't. */

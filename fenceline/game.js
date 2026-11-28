@@ -14,6 +14,7 @@ import { createPlay } from './play.js';
 import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
 import { leaveGame, setScreen, showMenu } from './app.js';
 import * as ads from './ads.js';
+import { recordScores } from './leaderboards.js';
 
 export function showGame(opts) {
   let mode = opts.mode, step = opts.step || 0;
@@ -432,6 +433,7 @@ export function showGame(opts) {
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
     const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, daily) : false;
+    if (!alreadyDone && mode !== 'tutorial') recordScores(p, g.elapsedMs, g.hintsUsed, daily);
     store.savedGame = null;
     if (!alreadyDone) board.buzz(40);
     setTimeout(() => { if (!disposed) showWin(g, best); }, showMs);

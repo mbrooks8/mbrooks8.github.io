@@ -14,6 +14,7 @@ import { cleanCode } from './net.js';
 import { SHARE_BASE, shareText, defaultName, GROUP_SIZES, diffLabel, cap, factory } from './common.js';
 import { shapeChip } from './shapes.js';
 import { thumb } from './thumb.js';
+import { leaderboardsOn, showLeaderboards } from './leaderboards.js';
 import { openGame } from './app.js';
 import { replayDialog } from './replay.js';
 import { timelapseIds } from './timelapse.js';
@@ -161,8 +162,12 @@ export function statsDialog() {
   cells.push(
     stat(el('span', { style: 'display:inline-flex;align-items:center' }, icon('candle', 22, 'var(--hint)'), String(store.dailyStreak)), 'streak', `best ${store.bestStreak}`),
     stat(best > 0 ? formatTime(best) : '–', 'best ' + Boards.label(sh, w, h), diffLabel(diff) + ', no hints'),
-    stat(String(store.noHintWins), 'no-hint', 'solves'));
-  const kids = [el('div', { class: 'stat3' }, ...cells), el('hr', { class: 'divider gap8' })];
+    stat(String(store.noHintWins), 'no-hint', 'solves'),
+    Object.assign(stat(store.points.toLocaleString('en-US'), 'points', 'solving earns more on bigger, harder boards'), { className: 'wide' }));
+  const kids = [el('div', { class: 'stat3' }, ...cells)];
+  // Leaderboards (Google Play Games, Android app only).
+  if (leaderboardsOn()) kids.push(el('div', { class: 'gap8' }, button('Leaderboards', () => showLeaderboards(), { size: 20, kind: 'outline', icon: 'chart' })));
+  kids.push(el('hr', { class: 'divider gap8' }));
 
   const note = text('', { size: 15, color: 'inkSoft' });
   const items = store.history;
