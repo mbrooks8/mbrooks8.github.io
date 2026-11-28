@@ -96,6 +96,9 @@ export function createPlay(ctx) {
           if (msg.t === 'STATE' && performance.now() - lastLocalEdit < 1500) return;
           if (coop && coop.apply(msg)) { if (msg.t === 'MARK') play('friend'); board.invalidate(); refresh(); }
           break;
+        case 'CLEARED': // someone used Clear mistakes: a hint for the whole team
+          if (coop && coop.apply(msg)) { setNote(`${nameOf(msg.player)} cleared mistakes.`); refresh(); }
+          break;
         case 'REMATCH': {
           // Round over: the next one starts by itself in a few seconds, so the host still has time to change
           // the board. Someone still drawing: the host decides.

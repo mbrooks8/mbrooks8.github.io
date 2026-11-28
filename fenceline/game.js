@@ -17,7 +17,7 @@ import * as ads from './ads.js';
 
 export function showGame(opts) {
   let mode = opts.mode, step = opts.step || 0;
-  let game = null, resumedAt = 0, winShown = false, winCard = null, pendingFix = null, guide = [], guideAt = 0, disposed = false;
+  let game = null, resumedAt = 0, winShown = false, winCard = null, guide = [], guideAt = 0, disposed = false;
   // Every move, for the timelapse in Stats (timelapse.js). resumeTl: the saved one, when continuing.
   let rec = null, resumeTl = null;
   // Hints taken on this puzzle, and videos watched for more (ads.js: only the production app limits hints).
@@ -53,8 +53,8 @@ export function showGame(opts) {
     return b;
   };
   // A finished puzzle stays finished: undo would un-solve a win that is already counted.
-  const undoBtn = tool('undo', '', 'Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); track(); game.undo(); track(Kind.UNDO); board.clearHighlights(); pendingFix = null; refresh(); save(); tourEvent('undo'); });
-  const redoBtn = tool('redo', '', 'Redo', () => { if (!game || game.isSolved()) return; if (game.canRedo) play('flick'); game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); tourEvent('redo'); });
+  const undoBtn = tool('undo', '', 'Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); track(); game.undo(); track(Kind.UNDO); board.clearHighlights(); refresh(); save(); tourEvent('undo'); });
+  const redoBtn = tool('redo', '', 'Redo', () => { if (!game || game.isSolved()) return; if (game.canRedo) play('flick'); game.redo(); board.clearHighlights(); refresh(); save(); tourEvent('redo'); });
   // Pen: Fence -> X -> Draw (drag from dot to dot) -> Fence.
   const penBtn = tool('pen', 'Fence', 'Pen: Fence', () => {
     if (board.drawPen) { board.drawPen = false; board.crossPen = false; }
@@ -99,7 +99,7 @@ export function showGame(opts) {
   board.onPingDone = () => { refresh(); if (!board.pingLimited) setNote(''); board.pingLimited = false; };
   board.onPingLimited = () => { board.pingLimited = true; setNote('Easy on the pings, give it a moment.'); };
   if (window.__fenceline) window.__fenceline.board = board;
-  board.onChanged = () => { pendingFix = null; if (mode !== 'tutorial' && !board.stroking) setNote(''); advanceGuide(); refresh(); save(); };
+  board.onChanged = () => { if (mode !== 'tutorial' && !board.stroking) setNote(''); advanceGuide(); refresh(); save(); };
   board.onOffGuide = () => { const s = guide[guideAt]; if (s) setNote('Try the glowing gap. ' + s.text); };
 
   const applySettings = () => {
@@ -273,10 +273,10 @@ export function showGame(opts) {
   };
 
   // Tools.
-  /** Co-op: the shared board can only carry hinted pieces, so every phone counts just those (same number for all). */
+  /** Co-op: every phone counts the hinted pieces on the shared board plus each Clear mistakes anyone used (same number for all). */
   const sharedHints = () => {
     if (!mp.shared() || !game) return;
-    let n = 0; for (const h of game.hinted) if (h) n++;
+    let n = game.clearsUsed; for (const h of game.hinted) if (h) n++;
     game.hintsUsed = n;
   };
   /** Production app only: after the free hints, a short video for each extra one (never blocks if none loads). */
@@ -287,34 +287,20 @@ export function showGame(opts) {
     return r !== 'no' && !disposed;
   };
   const hint = async () => {
-    if (!game || game.isSolved() || !game.findHint()) return;
+    if (!game || game.isSolved()) return;
+    let h = game.findHint();
+    if (!h) return;
+    if (h.isFix) { // wrong marks first: circle them (free). Clear mistakes in the ⋯ menu erases them, and that counts as a hint.
+      board.flashMistakes(h.wrong);
+      play('oops');
+      setNote(h.reason + ' Clear mistakes in the ⋯ menu erases them.');
+      return;
+    }
     if (!await mayHint()) return;
     const g = game;
     if (!g || g.isSolved()) return;
-    const h = g.findHint();
-    if (!h) return;
-    if (h.isFix) {
-      const same = pendingFix && pendingFix.length === h.wrong.length && h.wrong.every(e => pendingFix.includes(e));
-      if (same) {
-        hintsTaken++;
-        track();
-        const n = g.clearMistakes();
-        track(Kind.HINT); // the replay shows it as a hint, with who took it
-        sharedHints();
-        play('erase');
-        board.clearHighlights();
-        setNote(`Erased ${n} wrong mark${n === 1 ? '' : 's'}.`);
-        pendingFix = null;
-        refresh(); save();
-      } else {
-        board.flashMistakes(h.wrong);
-        play('oops');
-        setNote(h.reason + ' Hint again to erase.');
-        pendingFix = h.wrong;
-      }
-      return;
-    }
-    pendingFix = null;
+    h = g.findHint();
+    if (!h || h.isFix) return;
     hintsTaken++;
     g.applyHint(h);
     play('hint');
@@ -322,6 +308,27 @@ export function showGame(opts) {
     setNote(h.reason);
     refresh(); save();
     tourEvent('hint');
+  };
+
+  /** Erases every wrong mark. It counts as a hint: in stats, the win card, the free-hint limit (a video after that) and co-op for everyone. */
+  const clearMistakes = async () => {
+    const g = game;
+    if (!g || g.isSolved()) return;
+    if (!g.mistakes().length) { setNote('No mistakes!'); return; }
+    if (!await mayHint()) return;
+    if (game !== g || g.isSolved()) return;
+    track();
+    const n = g.clearMistakes();
+    if (!n) { setNote('No mistakes!'); return; }
+    hintsTaken++;
+    if (mp.shared() && mp.coop) mp.coop.clearedMistakes();
+    sharedHints();
+    track(Kind.HINT); // the replay shows it as a hint, with who took it
+    play('erase');
+    board.clearHighlights();
+    setNote(`Erased ${n} mark${n === 1 ? '' : 's'}.`);
+    refresh(); save();
+    tourEvent('clear');
   };
 
   const check = () => {
@@ -332,7 +339,6 @@ export function showGame(opts) {
     else {
       board.flashMistakes(wrong);
       setNote(`${wrong.length} wrong mark${wrong.length === 1 ? '' : 's'}, circled in red.`);
-      pendingFix = wrong;
     }
   };
 
@@ -356,19 +362,10 @@ export function showGame(opts) {
       col.append(b);
     };
     const multi = mode === 'mp';
-    // Hint first circles any wrong marks (Hint again erases them), else draws the next piece.
+    // Hint circles any wrong marks, else draws the next piece. Clear mistakes erases them and counts as a hint.
     // With "No hints" on it is Check, which only looks for mistakes.
     item(hintsOff() ? 'check' : 'bulb', hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint(), 'var(--hint)', 'shows the next move');
-    item('eraser', 'Clear mistakes', () => {
-      track();
-      const n = game ? game.clearMistakes() : 0;
-      track(Kind.HINT); // the replay shows it as a hint, with who took it
-      sharedHints();
-      if (n) play('erase');
-      setNote(n === 0 ? 'No mistakes!' : `Erased ${n} mark${n === 1 ? '' : 's'}.`);
-      refresh(); save();
-      if (n) tourEvent('clear');
-    }, undefined, 'erases marks that are wrong');
+    item('eraser', 'Clear mistakes', clearMistakes, undefined, 'erases marks that are wrong');
     if (!multi) item('restart', 'Start over', confirmReset, undefined, 'wipes the board');
     col.append(el('hr', { class: 'divider', style: 'margin:6px 0' }));
     if (multi && mp.room && !mp.nearby && mp.room.roomId) item('invite', 'Invite', () => {
@@ -397,7 +394,7 @@ export function showGame(opts) {
           d.close();
           if (mode === 'tutorial') { // start the lesson over, with its own fences back in place
             const ms = game ? game.elapsedMs : 0;
-            board.clearHighlights(); pendingFix = null;
+            board.clearHighlights();
             startTutorial(step, false);
             if (game) game.elapsedMs = ms;
             return;
@@ -405,7 +402,7 @@ export function showGame(opts) {
           if (game) game.reset();
           winShown = false; board.clearCelebration();
           if (winCard) { winCard.close(); winCard = null; } // the win card goes with the win, and finishing again plays the show again
-          board.clearHighlights(); pendingFix = null;
+          board.clearHighlights();
           if (mp.shared() && mp.coop) mp.coop.syncAll(); // host also sends the whole board, so everyone lands on the same blank board
           setNote('');
           refresh(); save();

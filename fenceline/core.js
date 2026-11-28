@@ -1080,6 +1080,7 @@ export class Game {
     this.marks = new Uint8Array(n);
     this.hinted = new Uint8Array(n);
     this.hintsUsed = 0;
+    this.clearsUsed = 0; // times Clear mistakes was used (each counts as a hint; co-op shares the count)
     this.elapsedMs = 0;
     this.autoCross = false;
     this.onLocalChange = null;
@@ -1154,7 +1155,7 @@ export class Game {
       this.hinted[e] = text[3 * e + 2] === '1' ? 1 : 0;
       if (this.hinted[e]) n++;
     }
-    this.hintsUsed = n;
+    this.hintsUsed = n + this.clearsUsed;
   }
 
   autoCrossAround(edge) {
@@ -1320,9 +1321,12 @@ export class Game {
     this.beginStroke();
     for (const e of wrong) this.record(e, Edge.UNKNOWN);
     this.endStroke();
-    this.hintsUsed++; // fixing mistakes for you counts as a hint
+    this.hintsUsed++; this.clearsUsed++; // fixing mistakes for you counts as a hint
     return wrong.length;
   }
+
+  /** Co-op: another player used Clear mistakes, which counts as a hint for everyone. */
+  applyRemoteClear() { this.hintsUsed++; this.clearsUsed++; }
 
   saveString() {
     let s = this.puzzle.encode(true) + '|';

@@ -29,6 +29,7 @@ export const Msg = {
       case 'PING': return `PING\t${m.player}\t${m.vertex}` + (m.x != null && m.y != null ? `\t${+m.x.toFixed(3)}\t${+m.y.toFixed(3)}` + (m.kind ? `\t${m.kind}` : '') : '');
       case 'REMATCH': return `REMATCH\t${m.player}`;
       case 'LEFT': return `LEFT\t${m.player}`;
+      case 'CLEARED': return `CLEARED\t${m.player}`; // co-op: Clear mistakes was used (counts as a hint; older phones ignore it)
     }
     return '';
   },
@@ -65,6 +66,7 @@ export const Msg = {
         }
         case 'REMATCH': return { t: 'REMATCH', player: int(f[1]) };
         case 'LEFT': return { t: 'LEFT', player: int(f[1]) };
+        case 'CLEARED': return { t: 'CLEARED', player: int(f[1]) };
       }
     } catch (e) { /* bad message */ }
     return null;
@@ -236,7 +238,7 @@ export class Room {
         this.L('onJoinRequest', peer, (msg.name || '').trim() || 'A friend', this.returningSeat(msg) >= 0);
         return;
       }
-      case 'PROG': case 'DONE': case 'MARK': case 'REMATCH': case 'PING': {
+      case 'PROG': case 'DONE': case 'MARK': case 'REMATCH': case 'PING': case 'CLEARED': {
         if (!this.peerPlayer.has(peer)) return;
         const from = this.peerPlayer.get(peer);
         let fixed = { ...msg, player: from };
@@ -372,12 +374,15 @@ export class CoopBoard {
   }
   apply(msg) {
     if (msg.t === 'MARK') { this.game.applyRemote(msg.edge, msg.value, msg.player, msg.hint); return true; }
+    if (msg.t === 'CLEARED') { this.game.applyRemoteClear(); return true; }
     if (msg.t === 'STATE') {
       if (!this.room.isHost && msg.board !== this.game.boardState()) { this.game.loadBoardState(msg.board); return true; }
       return false;
     }
     return false;
   }
+  /** Tell everyone this phone used Clear mistakes (a hint for the whole team). */
+  clearedMistakes() { this.room.broadcast({ t: 'CLEARED', player: this.room.me }); }
   syncAll() { if (this.room.isHost) this.room.broadcast({ t: 'STATE', board: this.game.boardState() }); }
   detach() { this.game.onLocalChange = null; }
 }
