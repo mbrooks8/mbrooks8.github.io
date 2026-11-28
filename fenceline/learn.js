@@ -1,8 +1,9 @@
 // Learn: the rules in three lines with a little picture each, the gestures, then the guided lessons.
 // (How to play and Learn used to be two buttons; Michael asked for one.)
-import { Tutorial } from './core.js';
+import { Tutorial, Game, Edge } from './core.js';
 import { store } from './store.js';
-import { el, dialog, theme } from './ui.js';
+import { el, dialog, theme, text, button } from './ui.js';
+import { BoardView } from './board.js';
 import { pencilLine } from './sketch.js';
 import { icon } from './icons.js';
 import { thumb } from './thumb.js';
@@ -70,4 +71,26 @@ export function learnDialog() {
     lesson(thumb(goal, {}), 'The goal', 'one loop, all the way around', anyDone, () => openGame({ mode: 'tutorial', step: 0 })),
     ...lessons,
   ));
+}
+
+/** Before the first lesson: what you're aiming for, and a finished puzzle to look at. */
+export function showGoal() {
+  let d;
+  const done = new Game(Tutorial.goalPuzzle());
+  for (let e = 0; e < done.grid.edgeCount; e++) if (done.puzzle.solution[e]) done.setMark(e, Edge.LINE);
+  const mini = el('canvas', { class: 'mini' });
+  const col = el('div', { class: 'col' },
+    text('The goal', { size: 26, bold: true }),
+    text('Join the dots into one closed fence. Each number tells how many of its 4 sides are fence.', { size: 16 }),
+    mini,
+    text('Once a fence goes all the way around and every number is satisfied, a puzzle is finished.', { size: 15, color: 'inkSoft' }),
+    text('Tap the gap between two dots to draw a fence. Press and hold a gap to mark it X.', { size: 16, cls: 'gap10' }),
+    el('div', { class: 'gap14' }, button('Show me how', () => d.close(), { size: 18, accent: 'accent' })),
+  );
+  let mb = null;
+  d = dialog(col, { onClose: () => mb && mb.destroy() });
+  mb = new BoardView(mini);
+  mb.locked = true; mb.showErrors = false; mb.palette = theme.pal; mb.pencilColor = theme.accent;
+  mb.setGame(done);
+  setTimeout(() => mb.playSolved({ celebrate: false }), 250);
 }

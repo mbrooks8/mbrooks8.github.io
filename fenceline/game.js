@@ -10,8 +10,10 @@ import { Mode } from './room.js';
 import { play } from './sound.js';
 import { PING_KINDS, pingGlyph } from './pings.js';
 import { ownedPings } from './cosmetics.js';
-import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, JOIN_BASE, factory, isAndroid, keepAwake } from './common.js';
+import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, factory, isAndroid, keepAwake } from './common.js';
 import { createPlay } from './play.js';
+import { inviteSoloCard, shareRoom } from './play-cards.js';
+import { showGoal } from './learn.js';
 import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
 import { timelapseRow } from './timelapse-row.js';
 import { leaveGame, setScreen, showMenu } from './app.js';
@@ -28,6 +30,8 @@ export function showGame(opts) {
   // Hints taken on this puzzle, and videos watched for more (ads.js: only the production app limits hints).
   let hintsTaken = 0, hintVideos = 0;
   const hintsOff = () => store.noHints && mode !== 'tutorial';
+  // A solo board turned into a co-op room (⋯ Invite friends): it stays in Continue, as the solo game it came from.
+  let soloFrom = '', soloGame = null;
 
   // Layout.
   const back = el('button', { type: 'button', class: 'iconbtn', 'aria-label': 'Back' }, icon('back', 26));
@@ -135,14 +139,14 @@ export function showGame(opts) {
     if (!game) return;
     bankTime();
     game.elapsedMs = Math.round(game.elapsedMs);
-    if (mode === 'mp') return;
+    if (mode === 'mp' && !(soloGame && game === soloGame)) return;
     if (game.isSolved()) {
       const s = store.savedGame;
       if (s && s.startsWith(game.puzzle.encode(true))) { store.savedGame = null; store.savedTimelapse = null; }
       return;
     }
     store.savedGame = game.saveString();
-    store.savedMode = mode;
+    store.savedMode = mode === 'mp' ? soloFrom : mode;
     store.savedTimelapse = rec ? game.puzzle.encode(true) + '\n' + rec.encode() : null;
   };
   const onVis = () => {
@@ -259,28 +263,6 @@ export function showGame(opts) {
     for (const b of [undoBtn, redoBtn, penBtn, menuBtn]) b.classList.toggle('tourglow', b === target);
   };
 
-  /** Before the first lesson: what you're aiming for, and a finished puzzle to look at. */
-  const showGoal = () => {
-    let d;
-    const done = new Game(Tutorial.goalPuzzle());
-    for (let e = 0; e < done.grid.edgeCount; e++) if (done.puzzle.solution[e]) done.setMark(e, Edge.LINE);
-    const mini = el('canvas', { class: 'mini' });
-    const col = el('div', { class: 'col' },
-      text('The goal', { size: 26, bold: true }),
-      text('Join the dots into one closed fence. Each number tells how many of its 4 sides are fence.', { size: 16 }),
-      mini,
-      text('Once a fence goes all the way around and every number is satisfied, a puzzle is finished.', { size: 15, color: 'inkSoft' }),
-      text('Tap the gap between two dots to draw a fence. Press and hold a gap to mark it X.', { size: 16, cls: 'gap10' }),
-      el('div', { class: 'gap14' }, button('Show me how', () => d.close(), { size: 18, accent: 'accent' })),
-    );
-    let mb = null;
-    d = dialog(col, { onClose: () => mb && mb.destroy() });
-    mb = new BoardView(mini);
-    mb.locked = true; mb.showErrors = false; mb.palette = theme.pal; mb.pencilColor = theme.accent;
-    mb.setGame(done);
-    setTimeout(() => mb.playSolved({ celebrate: false }), 250);
-  };
-
   // Tools.
   /** Co-op: every phone counts the hinted pieces on the shared board plus each Clear mistakes anyone used (same number for all). */
   const sharedHints = () => {
@@ -381,11 +363,10 @@ export function showGame(opts) {
     // A finished daily stays finished: no starting it over for another go.
     if (!multi && !(game && dailyLocked(game.puzzle))) item('restart', 'Start over', confirmReset, undefined, 'wipes the board');
     col.append(el('hr', { class: 'divider', style: 'margin:6px 0' }));
-    if (multi && mp.room && !mp.nearby && mp.room.roomId) item('invite', 'Invite', () => {
-      const c = mp.room.roomId.toUpperCase();
-      shareText(`Join my Fenceline game!\n${JOIN_BASE}${c}\nRoom code: ${c}`, setNote);
-    });
+    if (multi && mp.room && !mp.nearby && mp.room.roomId) item('invite', 'Invite', () => shareRoom(mp.room.roomId, setNote));
     if (mode !== 'tutorial' && game && PuzzleCode.of(game.puzzle)) item('share', 'Share', () => sharePuzzle(null));
+    // A solo board (not the daily, not a lesson) can become a co-op room with everything on it. Online only.
+    if ((mode === 'free' || mode === 'code') && game && !game.isSolved()) item('invite', 'Invite friends', inviteFriends);
     if (mode === 'free') item('newp', 'New puzzle', () => {
       const p = game && game.puzzle;
       if (p) newPuzzle(p.width, p.height, p.difficulty || 'EASY', null, p.shape);
@@ -395,6 +376,15 @@ export function showGame(opts) {
     if (store.sound) col.append(el('hr', { class: 'divider', style: 'margin:6px 0' }), volumeSlider('Effects', 'sfxVolume', 'fence'), volumeSlider('Music', 'musicVolume'));
     d = dialog(col, { place: 'note' });
   };
+
+  const inviteFriends = () => inviteSoloCard(async open => {
+    const was = mode, g = game;
+    soloFrom = was; soloGame = g;
+    let code = '';
+    try { code = await mp.hostFromSolo(open); } finally { if (!code && mode !== 'mp') { soloFrom = ''; soloGame = null; } }
+    if (code) { ads.banner(false); refresh(); save(); }
+    return code;
+  });
 
   const confirmReset = () => {
     let d;

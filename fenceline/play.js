@@ -6,7 +6,7 @@ import { Shape, Edge, Game, PuzzleCode, Boards } from './core.js';
 import { RematchClock } from './rematch.js';
 import { PingLimiter, pingGlyph } from './pings.js';
 import { store, formatTime } from './store.js';
-import { theme, el, text, button, chip, dialog, sk, setRoomPaper } from './ui.js';
+import { theme, el, text, button, dialog, sk, setRoomPaper } from './ui.js';
 import { pencilColor, pencilStyle, pencilSwatch, seatStyles, pencilFx, pencilAccent } from './sketch.js';
 import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
 import { Link } from './net.js';
@@ -15,9 +15,10 @@ import { scribble } from './shop.js';
 import { ownedPencils } from './cosmetics.js';
 import { play } from './sound.js';
 import { createVotes } from './vote-ui.js';
-import { GROUP_SIZES, JOIN_BASE, cap, diffLabel, factory, shareText, defaultName } from './common.js';
+import { diffLabel, factory, defaultName } from './common.js';
 import { timelapseRow } from './timelapse-row.js';
 import { leaveGame } from './app.js';
+import { joinRequestCard, lostCard, shareRoom, nextBoardCard } from './play-cards.js';
 
 export function createPlay(ctx) {
   const { opts, board, title, loading, noteText, playersText, setNote, showLoading, refresh, start } = ctx;
@@ -291,9 +292,37 @@ export function createPlay(ctx) {
     fillLobby();
   };
 
-  const shareInvite = () => {
-    const c = (room ? room.roomId : roomCode).toUpperCase();
-    shareText(`Join my Fenceline game!\n${JOIN_BASE}${c}\nRoom code: ${c}`, t => { lobbyStatus = t; fillLobby(); });
+  const shareInvite = () => shareRoom(room ? room.roomId : roomCode, t => { lobbyStatus = t; fillLobby(); });
+
+  /**
+   * Solo game to co-op room (⋯ Invite friends): host a room with this very puzzle, its fences, X marks and time,
+   * and keep drawing. Friends join as into any game in progress (the host lets them in). Online only.
+   * Resolves to the room code; throws with a message if no room could be made.
+   */
+  const hostFromSolo = async open => {
+    const g = ctx.game;
+    if (!g || g.isSolved() || link) return '';
+    const p = g.puzzle;
+    const myLink = link = new Link();
+    link.ui = linkUi;
+    if (open) link.listInfo = openCard;
+    if (window.__fenceline) window.__fenceline.link = link;
+    let r;
+    try { r = await link.host(defaultName() || 'Host', store.pencil, store.installId); } catch (e) {
+      if (link === myLink) { link = null; room = null; }
+      try { myLink.close(); } catch (_) { /* ignore */ }
+      throw e;
+    }
+    if (ctx.disposed || link !== myLink || ctx.game !== g || g.isSolved()) { myLink.close(); if (link === myLink) link = null; return ''; }
+    room = r;
+    mpMode = Mode.COOP; mpShape = p.shape; mpW = p.width; mpH = p.height; mpDiff = p.difficulty || 'EASY';
+    room.setup = setupText(); applyPaper();
+    roomCode = room.roomId;
+    for (let e = 0; e < g.grid.edgeCount; e++) g.owner[e] = room.me; // everything drawn so far is the host's
+    room.start(Mode.COOP, p);
+    startRound(p, true, '');
+    prepareNextPuzzle(); // for Play again
+    return room.roomId;
   };
 
   const fillLobby = () => {
@@ -311,8 +340,9 @@ export function createPlay(ctx) {
       kids.push(text(opts.role === 'host' && !r ? (nearby ? 'Starting Nearby…' : 'Making a room…') : nearby ? 'Looking for games…' : 'Joining…', { size: 24, bold: true }));
       if (roomCode && !nearby) kids.push(text(`Room ${roomCode.toUpperCase()}`, { size: 15, color: 'inkSoft' }));
     } else {
-      const ready = r.here.length >= 2;
-      kids.push(text(r.isHost ? (ready ? 'Ready when you are!' : 'Waiting for friends…') : "You're in!", { size: 24, bold: true }));
+      // Co-op can start with just the host (friends join later, with the host's OK). A race needs two.
+      const alone = r.here.length < 2, ready = !alone || mpMode === Mode.COOP;
+      kids.push(text(r.isHost ? (!alone ? 'Ready when you are!' : 'Waiting for friends…') : "You're in!", { size: 24, bold: true }));
       let setup = r.isHost ? null : r.setup.split('|');
       const label = r.isHost ? `${mpMode === Mode.COOP ? 'Co-op' : 'Versus'} · ${boardLabelOf(mpShape, mpW, mpH, mpDiff)}`
         : setup && setup.length >= 5 ? `${setup[0] === Mode.COOP ? 'Co-op' : 'Versus'} · ${boardLabelOf(Shape.entries.find(x => x.name === setup[1]) || Shape.SQUARE, setup[2], setup[3], setup[4])}` : '';
@@ -325,9 +355,10 @@ export function createPlay(ctx) {
       if (row) kids.push(row);
       kids.push(el('div', { class: 'plist' }, ...shownPlayers(r).map(p => dotLine(p, star(p) + (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
       if (r.isHost) {
-        const b = button('Start', () => { if (r.here.length >= 2) launchRound(); }, { size: 20, kind: 'primary' });
+        const b = button('Start', () => { if (r.here.length >= 2 || mpMode === Mode.COOP) launchRound(); }, { size: 20, kind: 'primary' });
         b.classList.toggle('dim', !ready);
         kids.push(el('div', { class: 'gap8' }, b));
+        if (alone && ready) kids.push(text('Start now if you like. Friends can still join.', { size: 14, color: 'inkSoft' }));
       } else kids.push(text('The host starts the game.', { size: 15, color: 'inkSoft' }));
     }
     if (lobbyStatus) kids.push(text(lobbyStatus, { size: 15, color: 'inkSoft' }));
@@ -372,7 +403,7 @@ export function createPlay(ctx) {
     prepareNextPuzzle();
   };
 
-  const startRound = (p, keep) => {
+  const startRound = (p, keep, keepNote = "You're back in!") => {
     const r = room;
     if (!r || ctx.disposed) return;
     if (r.isHost) round = r.round;
@@ -394,7 +425,7 @@ export function createPlay(ctx) {
       board.pingArmed = false;
     }
     ctx.mode = 'mp';
-    if (!keep) start(g); else { board.invalidate(); laterNote("You're back in!"); }
+    if (!keep) start(g); else { board.invalidate(); if (keepNote) laterNote(keepNote); }
     playersText.hidden = false;
     updatePlayers();
     clearTimeout(syncTimer);
@@ -548,66 +579,19 @@ export function createPlay(ctx) {
   };
 
   /** Host, after a round: pick the shape, size and difficulty of the next one, then start it. */
-  const nextBoardDialog = () => {
-    let d;
-    let shape = mpShape, size = `${mpW}x${mpH}`, diff = mpDiff;
-    const col = el('div', { class: 'col' });
-    const fill = () => {
-      const sizes = Boards.sizes(shape).concat(mpMode === Mode.COOP ? GROUP_SIZES[shape.name] || [] : []);
-      if (!sizes.includes(size)) size = Boards.defaultSize ? Boards.defaultSize(shape) : sizes[1];
-      const kids = [
-        text('Next board', { size: 26, bold: true }),
-        el('div', { class: 'row gap6' }, ...Shape.entries.map(sh => chip(sh.label, shape === sh, () => { shape = sh; fill(); }, { size: 13 }))),
-        text(`${shape.label} board`, { size: 15, color: 'inkSoft' }),
-      ];
-      for (let i = 0; i < sizes.length; i += 4) {
-        kids.push(el('div', { class: 'row gap6' }, ...sizes.slice(i, i + 4).map(s =>
-          chip(s.replace('x', '×'), size === s, () => { size = s; fill(); }))));
-      }
-      kids.push(el('div', { class: 'row gap6' }, ...['EASY', 'MEDIUM', 'HARD'].map(dd => chip(cap(dd), diff === dd, () => { diff = dd; fill(); }))));
-      kids.push(el('div', { class: 'row gap14' },
-        button('Back', () => d.close(), { size: 17 }),
-        button('Start', () => {
-          d.close();
-          const [w, h] = size.split('x').map(Number);
-          const changed = shape !== mpShape || w !== mpW || h !== mpH || diff !== mpDiff;
-          mpShape = shape; mpW = w; mpH = h; mpDiff = diff;
-          if (changed) {
-            if (room) room.setup = setupText();
-            prepareNextPuzzle();
-          }
-          if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
-          launchRound();
-        }, { size: 18, kind: 'primary' })));
-      col.replaceChildren(...kids);
-    };
-    fill();
-    d = dialog(col);
-  };
+  const nextBoardDialog = () => nextBoardCard({ shape: mpShape, w: mpW, h: mpH, diff: mpDiff, coop: mpMode === Mode.COOP }, (shape, w, h, diff) => {
+    const changed = shape !== mpShape || w !== mpW || h !== mpH || diff !== mpDiff;
+    mpShape = shape; mpW = w; mpH = h; mpDiff = diff;
+    if (changed) {
+      if (room) room.setup = setupText();
+      prepareNextPuzzle();
+    }
+    if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
+    launchRound();
+  });
 
-  /** Host: someone wants into the running game. */
-  const askToJoin = (r, peer, name, returning) => {
-    let d;
-    d = dialog(el('div', { class: 'col' },
-      text(returning ? `${name} is back!` : `${name} wants to join`, { size: 22, bold: true }),
-      text(returning ? 'Let them back into their seat?' : 'Let them into this game?', { size: 16, color: 'inkSoft' }),
-      el('div', { class: 'row gap14' },
-        button('Not now', () => { d.close(); r.deny(peer); }, { size: 17 }),
-        button('Let in', () => { d.close(); r.approve(peer); }, { size: 18, kind: 'primary' })),
-    ), { cancelable: false });
-  };
-
-  /** Guest: the host's phone went away. */
-  const lostDialog = () => {
-    let d;
-    d = dialog(el('div', { class: 'col' },
-      text('Lost the connection', { size: 22, bold: true }),
-      text('Rejoin to get your seat back, or keep drawing on your own.', { size: 16, color: 'inkSoft' }),
-      el('div', { class: 'row gap14' },
-        button('Keep drawing', () => { d.close(); setNote('Playing solo.'); updatePlayers(); }, { size: 16 }),
-        button('Rejoin', () => { d.close(); rejoin(); }, { size: 18, kind: 'primary' })),
-    ));
-  };
+  const askToJoin = (r, peer, name, returning) => joinRequestCard(r, peer, name, returning);
+  const lostDialog = () => lostCard({ rejoin, keep: () => { setNote('Playing solo.'); updatePlayers(); } });
 
   return {
     get room() { return room; },
@@ -615,7 +599,7 @@ export function createPlay(ctx) {
     get mpMode() { return mpMode; },
     get countingDown() { return countingDown; },
     ask: votes.ask,
-    nearby, shared, colorOf, sendProgress, mpSolved, startMultiplayer,
+    nearby, shared, colorOf, sendProgress, mpSolved, startMultiplayer, hostFromSolo,
     /** The game screen is closing. */
     dispose() {
       document.removeEventListener('visibilitychange', onWake);
