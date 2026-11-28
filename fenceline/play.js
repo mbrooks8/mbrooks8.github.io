@@ -12,6 +12,7 @@ import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
 import { Link } from './net.js';
 import { NearbyLink } from './nearby.js';
 import { scribble } from './shop.js';
+import { MP_POINTS } from './points.js';
 import { ownedPencils } from './cosmetics.js';
 import { play } from './sound.js';
 import { GROUP_SIZES, JOIN_BASE, cap, diffLabel, factory, shareText, defaultName } from './common.js';
@@ -467,6 +468,7 @@ export function createPlay(ctx) {
       kids.push(text('Solved together!', { size: 30, bold: true, color: 'accent', cls: 'center' }));
       const hints = g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`;
       kids.push(text(`Time ${formatTime(g.elapsedMs)} · ${hints}`, { size: 18, cls: 'center' }));
+      kids.push(text(`+${MP_POINTS} point`, { size: 15, color: 'inkSoft', cls: 'center' }));
       kids.push(el('div', { class: 'plist center' }, ...players.map(p => {
         let n = 0; for (let e = 0; e < g.grid.edgeCount; e++) if (g.marks[e] === Edge.LINE && g.owner[e] === p) n++;
         return dotLine(p, `${nameOf(p)}: ${n} piece${n === 1 ? '' : 's'}`);

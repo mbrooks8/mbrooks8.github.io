@@ -3,6 +3,9 @@
 
 const LEVEL = { EASY: 1, MEDIUM: 2, HARD: 3 };
 
+/** Points each player gets for finishing a round of Play together (versus: each finisher; co-op: everyone). */
+export const MP_POINTS = 1;
+
 /** Points for one finished puzzle: squares on the board x level (1, 2, 3); half as much again with no hints; +100 for the daily. */
 export function winPoints({ cells, difficulty, hints, daily }) {
   let p = Math.max(1, cells | 0) * (LEVEL[difficulty] || 1);

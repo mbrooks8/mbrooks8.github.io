@@ -16,6 +16,7 @@ import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
 import { leaveGame, setScreen, showMenu } from './app.js';
 import * as ads from './ads.js';
 import { recordScores } from './leaderboards.js';
+import { MP_POINTS } from './points.js';
 
 export function showGame(opts) {
   let mode = opts.mode, step = opts.step || 0;
@@ -429,7 +430,7 @@ export function showGame(opts) {
     const daily = mode === 'daily' && isTodaysDaily(g.puzzle); // a daily finished after midnight is just a puzzle
     const kind = daily ? 'daily' : mode !== 'mp' ? '' : mp.mpMode === Mode.COOP ? 'coop' : 'versus';
     if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind, keepRecording(g));
-    if (mode === 'mp') { if (!alreadyDone) board.buzz(40); mp.mpSolved(g, showMs); return; }
+    if (mode === 'mp') { if (!alreadyDone) { board.buzz(40); store.addPoints(MP_POINTS); } mp.mpSolved(g, showMs); return; } // Play together: 1 point to each player who finishes
     if (!alreadyDone && mode !== 'tutorial') ads.noteWin();
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
