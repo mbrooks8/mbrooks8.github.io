@@ -19,7 +19,7 @@ export function scribble(i) {
   return c;
 }
 
-const paperSample = bg => {
+export const paperSample = bg => {
   const pal = { ...theme.pal, ...((theme.night ? bg.night : bg.day) || {}) };
   return el('span', { class: 'paperprev', 'aria-hidden': 'true', style: { background: `repeating-linear-gradient(transparent 0 7px, ${pal.ruling} 7px 8px), ${pal.paper}` } });
 };

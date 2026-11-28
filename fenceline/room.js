@@ -22,7 +22,7 @@ export const Msg = {
       case 'LOBBY': {
         const seats = m.names.map((_, i) =>
           `${clean(m.names[i] ?? '')}\u001f${m.pencils[i] ?? 0}\u001f${m.away[i] ? 1 : 0}\u001f${clean(m.ids[i] ?? '')}`);
-        return `LOBBY\t${clean(m.room)}\u001f${m.term}\u001f${m.host}\u001f${clean(m.setup, 60)}\t` + seats.join('\t');
+        return `LOBBY\t${clean(m.room)}\u001f${m.term}\u001f${m.host}\u001f${clean(m.setup, 60)}\u001f${clean(m.bg || '', 20)}\t` + seats.join('\t');
       }
       case 'START': return `START\t${m.mode}\t${m.round}\t${m.puzzle}`;
       case 'PROG': return `PROG\t${m.player}\t${m.fraction}`;
@@ -51,7 +51,7 @@ export const Msg = {
           return {
             t: 'LOBBY', names: seats.map((s) => s[0] || null), pencils: seats.map((s) => (s[1] != null ? int(s[1]) : 0)),
             away: seats.map((s) => s[2] === '1'), room: meta[0], term: int(meta[1]), host: int(meta[2]),
-            ids: seats.map((s) => s[3] || null), setup: meta[3] ?? '',
+            ids: seats.map((s) => s[3] || null), setup: meta[3] ?? '', bg: meta[4] ?? '', // paper the host plays on (older phones ignore it)
           };
         }
         case 'START': if (f[1] !== 'VERSUS' && f[1] !== 'COOP') return null; return { t: 'START', mode: f[1], puzzle: f[3], round: int(f[2]) };
@@ -117,6 +117,7 @@ export class Room {
     this.roomId = isHost ? newRoomId() : '';
     this.term = 0;
     this._setup = '';
+    this.background = ''; // the host's paper (an id from cosmetics.js); co-op plays on it
     this.waitingFor = -1;
     this.skipped = new Set();
     this.leftAt = new Array(SEATS).fill(-1e15);
@@ -314,6 +315,7 @@ export class Room {
         if (msg.term < this.term && msg.room === this.roomId) return;
         this.roomId = msg.room; this.term = msg.term; this.hostSeat = msg.host;
         if (msg.setup) this._setup = msg.setup;
+        this.background = msg.bg || '';
         for (let i = 0; i < SEATS; i++) {
           this.seatIds[i] = msg.ids[i] ?? null;
           this.names[i] = msg.names[i] ?? null;
@@ -339,17 +341,17 @@ export class Room {
     }
   }
 
-  /** The pencil [seat] gets: [wanted] if it exists and is free, else [keep] when it is given, else the first free one. */
+  /**
+   * The pencil [seat] gets: [wanted] if it exists, else [keep] when it is given, else the plain first one.
+   * Friends may share a pencil: they keep the colour and each gets another line pattern (sketch.js seatStyles).
+   */
   freePencil(wanted, seat, keep = -1) {
-    const taken = new Set(this.players.filter((p) => p !== seat).map((p) => this.pencils[p]));
     const real = (wanted >= 0 && wanted < PENCILS) || (wanted >= EXTRA_PENCIL_BASE && wanted < EXTRA_PENCIL_BASE + EXTRA_PENCILS);
-    if (real && !taken.has(wanted)) return wanted;
-    if (keep >= 0) return keep;
-    let i = 0; while (taken.has(i)) i++;
-    return i;
+    if (real) return wanted;
+    return keep >= 0 ? keep : 0;
   }
 
-  /** Pick another pencil colour once in the room. A colour a friend already has is refused (returns false). */
+  /** Pick another pencil colour once in the room (returns false for a number that is not a pencil). */
   setPencil(wanted) {
     if (this.me < 0) { this.myPencil = wanted; return true; }
     const mine = this.pencils[this.me];
@@ -361,12 +363,18 @@ export class Room {
     return true;
   }
 
+  /** The host tells everyone which paper co-op is played on. */
+  setBackground(id) {
+    this.background = id || '';
+    if (this.isHost) this.broadcast(this.lobby());
+  }
+
   lobby() {
     let last = -1; this.names.forEach((n, i) => { if (n != null) last = i; });
     const n = Math.max(1, last + 1);
     return {
       t: 'LOBBY', names: this.names.slice(0, n), pencils: this.pencils.slice(0, n), away: this.away.slice(0, n),
-      room: this.roomId, term: this.term, host: this.hostSeat, ids: this.seatIds.slice(0, n), setup: this._setup,
+      room: this.roomId, term: this.term, host: this.hostSeat, ids: this.seatIds.slice(0, n), setup: this._setup, bg: this.background,
     };
   }
 

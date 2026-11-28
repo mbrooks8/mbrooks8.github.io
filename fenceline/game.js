@@ -73,13 +73,14 @@ export function showGame(opts) {
   let pickerOpen = false, held = false, holdTimer = 0;
   const picker = el('div', { class: 'pingpicker', hidden: true });
   const setKind = key => {
-    board.pingKind = key;
+    board.pingKind = key; store.pingKind = key;
     const g = pingGlyph(key), ring = pingBtn.querySelector('.ring');
     const old = ring.querySelector('svg, .glyph');
     old.replaceWith(g ? el('span', { class: 'glyph', text: g }) : icon('ping', 28));
     pingBtn.setAttribute('aria-label', g ? 'Ping ' + (PING_KINDS.find(k => k.key === key).word) : 'Ping');
   };
   const closePicker = () => { pickerOpen = false; picker.hidden = true; };
+  if (store.pingKind) setKind(store.pingKind); // the feeling picked in the wardrobe (or last time)
   const pickBtn = (key, glyph, word) => el('button', {
     type: 'button', class: 'pick' + (board.pingKind === key ? ' sel' : ''), 'aria-label': word,
     onclick: () => { setKind(key); closePicker(); board.pingArmed = true; refresh(); setNote('Tap anywhere to show everyone.'); },

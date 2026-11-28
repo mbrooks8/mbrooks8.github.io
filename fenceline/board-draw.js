@@ -131,7 +131,12 @@ export class BoardDraw {
         const style = (who >= 0 && this.ownerStyles && this.ownerStyles[who]) || 'solid';
         const ax = x0 + ix, ay = y0 + iy, bx = x1 - ix, by = y1 - iy;
         if (style === 'solid') pencilLine(ctx, ax, ay, bx, by, col, lineW, e * 7919 + 3);
-        else {
+        else if (style === 'zigzag') {
+          // A zigzag across the gap: four little strokes to and fro.
+          const nx = -(by - ay) / Math.max(1, Math.hypot(bx - ax, by - ay)) * unit * 0.07, ny = (bx - ax) / Math.max(1, Math.hypot(bx - ax, by - ay)) * unit * 0.07;
+          const pts = [[0, 0], [0.2, 1], [0.4, -1], [0.6, 1], [0.8, -1], [1, 0]].map(([t, s]) => [ax + (bx - ax) * t + nx * s, ay + (by - ay) * t + ny * s]);
+          for (let k = 0; k + 1 < pts.length; k++) pencilLine(ctx, pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], col, lineW * 0.8, e * 7919 + 3 + k, 2);
+        } else {
           // Dashed or dotted, so players who share a colour still look different.
           const parts = style === 'dashed' ? [[0, 0.38], [0.62, 1]] : [[0.17, 0.21], [0.48, 0.52], [0.79, 0.83]];
           parts.forEach(([p, q], k) => pencilLine(ctx, ax + (bx - ax) * p, ay + (by - ay) * p, ax + (bx - ax) * q, ay + (by - ay) * q, col, lineW, e * 7919 + 3 + k));

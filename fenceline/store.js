@@ -1,7 +1,7 @@
 // Settings, stats, history and the saved game, kept in localStorage.
 // Every access is guarded: private windows and blocked storage just behave like a fresh install.
 import { Shape, Boards } from './core.js';
-import { parseOwned, canBuy, goodById, PENCIL_GOODS } from './cosmetics.js';
+import { parseOwned, canBuy, goodById, PENCIL_GOODS, ownedPings } from './cosmetics.js';
 
 const P = 'fenceline.';
 const mem = {};
@@ -39,6 +39,8 @@ export const store = {
   get noHints() { return bool('noHints', false); }, set noHints(v) { set('noHints', v); },
   get plainNumbers() { return bool('plainNumbers', false); }, set plainNumbers(v) { set('plainNumbers', v); },
   get pencil() { const p = int('pencil', 0); return p < 100 || this.owned.includes(PENCIL_GOODS.find(g => g.pencil === p)?.id) ? p : 0; }, set pencil(v) { set('pencil', v); },
+  /** The ping feeling your next ping carries ('' = plain rings); only one you own counts. */
+  get pingKind() { const k = get('pingKind', ''); return k && ownedPings(this.owned).some(p => p.key === k) ? k : ''; }, set pingKind(v) { set('pingKind', v); },
   /** 'system' | 'day' | 'night' */
   get theme() { const t = get('theme', 'system'); return ['system', 'day', 'night'].includes(t) ? t : 'system'; },
   set theme(v) { set('theme', v); },

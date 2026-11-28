@@ -6,12 +6,15 @@ import { backgroundById } from './cosmetics.js';
 import { play as playSound, applyVolumes } from './sound.js';
 
 export const theme = { night: false, pal: DAY, accent: pencilColor(0, false) };
+/** In a co-op room the host's paper is used by everyone (an id from cosmetics.js, or '' for your own). */
+let roomPaper = '';
+export function setRoomPaper(id) { const v = id || ''; if (v === roomPaper) return false; roomPaper = v; applyTheme(); onThemeChange.forEach(f => f()); return true; }
 
 const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
 export function applyTheme() {
   const t = store.theme;
-  const bg = backgroundById(store.background);
+  const bg = backgroundById(roomPaper || store.background);
   setPaper(bg.day, bg.night);
   theme.night = t === 'night' || (t === 'system' && !!(darkQuery && darkQuery.matches));
   theme.pal = theme.night ? NIGHT : DAY;

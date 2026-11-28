@@ -6,8 +6,8 @@ import { Shape, Edge, Game, PuzzleCode, Boards } from './core.js';
 import { RematchClock } from './rematch.js';
 import { PingLimiter, pingGlyph } from './pings.js';
 import { store, formatTime } from './store.js';
-import { theme, el, text, button, chip, dialog, sk } from './ui.js';
-import { pencilColor, pencilStyle, pencilSwatch } from './sketch.js';
+import { theme, el, text, button, chip, dialog, sk, setRoomPaper } from './ui.js';
+import { pencilColor, pencilSwatch, seatStyles } from './sketch.js';
 import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
 import { Link } from './net.js';
 import { NearbyLink } from './nearby.js';
@@ -45,7 +45,7 @@ export function createPlay(ctx) {
   const isHost = () => !!(room && room.isHost);
   const nameOf = p => (room && p === room.me) ? 'You' : (room && room.names[p]) || 'Friend';
   const colorOf = p => pencilColor(room ? (room.pencils[p] || 0) : 0, theme.night);
-  const styleOf = p => pencilStyle(room ? (room.pencils[p] || 0) : 0);
+  const styleOf = p => (room ? seatStyles(room.pencils, room.players)[p] : null) || 'solid';
   const boardLabelOf = (sh, w, h, d) => `${Boards.label(sh, w, h)} ${diffLabel(d)}`;
   // Players away for a while drop off the list (they keep their seat, colour and fences if they come back).
   const AWAY_SHOWN_MS = 30000;
@@ -67,14 +67,13 @@ export function createPlay(ctx) {
   };
   /** ★ marks whoever hosts right now (it moves when hosting moves). */
   const star = p => (room && p === (room.isHost ? room.me : room.hostSeat) ? '★ ' : '');
-  const dotLine = (p, label) => el('span', { class: 'pl' }, pencilSwatch(room ? (room.pencils[p] || 0) : 0, theme.night), label);
+  const dotLine = (p, label) => el('span', { class: 'pl' }, pencilSwatch(room ? (room.pencils[p] || 0) : 0, theme.night, styleOf(p)), label);
 
-  /** A row of pencils to pick from: the ones this player owns that no friend has taken. Null when there is only one. */
+  /** A row of pencils to pick from: the ones this player owns (friends may share one; they get another line pattern). Null when there is only one. */
   const pencilRow = r => {
     if (!r || r.me < 0) return null;
-    const taken = new Set(r.players.filter(p => p !== r.me).map(p => r.pencils[p]));
     const mine = r.pencils[r.me];
-    const free = ownedPencils(store.owned).filter(i => i === mine || !taken.has(i));
+    const free = ownedPencils(store.owned);
     if (free.length < 2) return null;
     return el('div', { class: 'scribbles wrap', role: 'group', 'aria-label': 'Your pencil' }, ...free.map(i => {
       const b = el('button', { type: 'button', class: 'pick', 'aria-label': 'Pencil ' + (i + 1), 'aria-pressed': i === mine ? 'true' : 'false' }, scribble(i));
@@ -83,15 +82,19 @@ export function createPlay(ctx) {
     }));
   };
 
+  /** Co-op is played on the host's paper (the host's own when we host); versus and solo use your own. */
+  const applyPaper = () => { if (room && room.isHost) room.setBackground(store.background); setRoomPaper(room && mpMode === Mode.COOP ? room.background : ''); };
+
   const linkUi = {
     onLobby(r) {
+      applyPaper();
       if (!r.isHost && r.me >= 0 && lobbyStatus === 'Asking to join…') lobbyStatus = '';
       fillLobby(); updatePlayers();
     },
     onMessage(r, msg) {
       switch (msg.t) {
         case 'START': if (!r.isHost) {
-          mpMode = msg.mode;
+          mpMode = msg.mode; applyPaper();
           let p;
           try { p = parsePuzzleText(msg.puzzle); } catch (e) { console.error(e); return; }
           // Rejoining the round we were already in: keep our board (and versus time).
@@ -145,7 +148,7 @@ export function createPlay(ctx) {
     onHostLost() {
       const had = !!room && room.me >= 0;
       if (link) link.close();
-      link = null; room = null;
+      link = null; room = null; applyPaper();
       if (!ctx.game) { lobbyStatus = had ? 'Lost the connection.' : lobbyStatus || 'Lost the connection.'; fillLobby(); return; }
       updatePlayers();
       lostDialog();
@@ -220,7 +223,7 @@ export function createPlay(ctx) {
           ? await link.host(myName || 'Host', store.pencil, store.installId, { coop: mpMode === Mode.COOP, board: `${mpW}x${mpH} ${diffLabel(mpDiff)}` })
           : await link.host(myName || 'Host', store.pencil, store.installId);
         if (ctx.disposed || link !== myLink) { myLink.close(); return; }
-        room.setup = setupText();
+        room.setup = setupText(); applyPaper();
         if (!nearby) roomCode = room.roomId;
         lobbyStatus = nearby ? 'Visible to nearby phones.' : 'Send your friends the code.';
       } else if (nearby) {
@@ -586,7 +589,7 @@ export function createPlay(ctx) {
       clearTimeout(syncTimer); clearTimeout(countTimer); clearTimeout(progTimer); clearTimeout(soonTimer);
       if (coop) coop.detach();
       if (link) link.close();
-      link = null; room = null;
+      link = null; room = null; applyPaper();
     },
   };
 }

@@ -13,6 +13,8 @@ export const PENCILS = [
 const PLAYER_DAY = ['#B5533C', '#2F4FA0', '#D09C30', '#C467A6', '#4A4641', '#48A4D8'];
 const PLAYER_NIGHT = ['#F08A5D', '#6F93F2', '#F0CF5E', '#F2A2C8', '#E2DCD2', '#93E3F5'];
 const STYLES = ['solid', 'dashed', 'dotted'];
+/** Every line pattern, in the order players who share a pencil colour are given them. */
+export const LINE_STYLES = ['solid', 'dashed', 'dotted', 'zigzag'];
 
 /**
  * Pencils from the store, numbered from 100. Each has its own line style besides its colour, so friends can tell them
@@ -64,8 +66,24 @@ export function pencilStyle(index) {
   return STYLES[Math.floor(Math.max(0, index | 0) / 6) % 3];
 }
 
-/** A small swatch of a player's line (colour and style), for name lists. */
-export function pencilSwatch(index, night) {
+/**
+ * Line style per seat when players may share a pencil: the first with a colour keeps that pencil's own style, the next
+ * ones with the same colour get the other patterns in turn (dashed, dotted, zigzag), so they stay tellable apart.
+ * [pencils] is indexed by seat; only [seats] are looked at. Returns an array indexed by seat.
+ */
+export function seatStyles(pencils, seats) {
+  const used = new Map(), out = [];
+  for (const s of [...seats].sort((a, b) => a - b)) {
+    const p = pencils[s] || 0, taken = used.get(p) || [];
+    const own = pencilStyle(p);
+    const st = !taken.includes(own) ? own : LINE_STYLES.find(x => !taken.includes(x)) || LINE_STYLES[taken.length % LINE_STYLES.length];
+    used.set(p, [...taken, st]); out[s] = st;
+  }
+  return out;
+}
+
+/** A small swatch of a player's line (colour and style), for name lists. [style] overrides the pencil's own. */
+export function pencilSwatch(index, night, style) {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', '0 0 24 10'); svg.setAttribute('width', '24'); svg.setAttribute('height', '10');
@@ -73,9 +91,18 @@ export function pencilSwatch(index, night) {
   const line = document.createElementNS(ns, 'line');
   line.setAttribute('x1', '3'); line.setAttribute('y1', '5'); line.setAttribute('x2', '21'); line.setAttribute('y2', '5');
   line.setAttribute('stroke', pencilColor(index, night)); line.setAttribute('stroke-width', '4'); line.setAttribute('stroke-linecap', 'round');
-  const st = pencilStyle(index);
+  const st = style || pencilStyle(index);
   if (st === 'dashed') line.setAttribute('stroke-dasharray', '5 4');
   if (st === 'dotted') line.setAttribute('stroke-dasharray', '2 4');
+  if (st === 'zigzag') {
+    line.setAttribute('stroke-width', '2.4'); line.setAttribute('stroke-linejoin', 'round');
+    const z = document.createElementNS(ns, 'polyline');
+    z.setAttribute('points', '3,8 7,2 11,8 15,2 19,8 22,3'); z.setAttribute('fill', 'none');
+    z.setAttribute('stroke', pencilColor(index, night)); z.setAttribute('stroke-width', '2.4');
+    z.setAttribute('stroke-linecap', 'round'); z.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(z);
+    return svg;
+  }
   svg.appendChild(line);
   return svg;
 }
