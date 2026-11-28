@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.fenceline.app",
       "sha256_cert_fingerprints": [
-        "34:3E:BA:A6:48:BF:12:FD:BF:79:F1:FC:62:38:26:B6:FA:9C:07:00:F1:24:D6:2B:2E:7E:61:DD:49:3E:28:88"
+        "34:3E:BA:A6:48:BF:12:FD:BF:79:F1:FC:62:38:26:B6:FA:9C:07:00:F1:24:D6:2B:2E:7E:61:DD:49:3E:28:88",
+        "BE:35:2F:56:57:EE:EA:6B:81:71:B6:C0:4A:2F:F7:46:0D:C7:15:94:E6:C6:EC:FF:74:D4:F6:85:7F:CE:01:C9"
       ]
     }
   }
