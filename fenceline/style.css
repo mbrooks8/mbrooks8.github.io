@@ -342,3 +342,9 @@ button.rowitem { cursor: pointer; min-height: 60px; }
 .votecount { margin-top: 6px; font-size: 13px; color: var(--inkSoft); font-variant-numeric: tabular-nums; }
 .voting .note.float { top: calc(190px + var(--sat)); }
 @media (prefers-reduced-motion: reduce) { .votebar > span { animation: none; } }
+.racers { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.racer { background: none; border: 0; padding: 2px; display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 14px; color: inherit; cursor: pointer; max-width: 96px; }
+.racer span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 96px; }
+.racer canvas.thumb { width: 76px; height: 76px; }
+.players.tap { cursor: pointer; }
+.racebig { align-items: center; }

@@ -5,6 +5,7 @@
 export const START_SECONDS = 10; // after the first ask
 export const SPEEDUP_SECONDS = 3; // taken off by each further ask
 export const MIN_SECONDS = 3; // never faster than this, so the host can still change the board
+export const LAST_CALL_SECONDS = 30; // versus: friends still racing get this long once the finishers are ready
 
 export class RematchClock {
   constructor() { this.deadline = 0; }
@@ -19,5 +20,9 @@ export class RematchClock {
     // Faster only: a countdown that is already under the minimum is left alone.
     this.deadline = now + Math.min(left, Math.max(MIN_SECONDS * 1000, left - SPEEDUP_SECONDS * 1000));
   }
+  /** Versus, friends still drawing: the finishers are ready, so the racers get a last call (never longer than one already running). */
+  lastCall(now) { if (!this.started) this.deadline = now + LAST_CALL_SECONDS * 1000; }
+  /** Everyone still here has finished: a running last call shortens to the usual countdown. */
+  allDone(now) { if (this.started) this.deadline = Math.min(this.deadline, now + START_SECONDS * 1000); }
   stop() { this.deadline = 0; }
 }

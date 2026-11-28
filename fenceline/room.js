@@ -37,6 +37,7 @@ export const Msg = {
       case 'VOTE': return `VOTE\t${m.player}\t${m.kind === 'clear' ? 'clear' : 'hint'}`; // co-op: asks everyone to vote on a Hint or Clear mistakes (older phones ignore it)
       case 'BALLOT': return `BALLOT\t${m.player}\t${m.for}\t${m.yes ? 1 : 0}`; // a vote on the open question asked by seat [for]
       case 'VOTEEND': return `VOTEEND\t${m.player}\t${m.pass ? 1 : 0}`; // the asker tells everyone how it went
+      case 'LOOK': return `LOOK\t${m.player}\t${m.lines}`; // versus: a racer's fence so far, for friends who finished to watch (older phones ignore it)
       case 'CLEARED': return `CLEARED\t${m.player}`; // co-op: Clear mistakes was used (counts as a hint; older phones ignore it)
     }
     return '';
@@ -76,6 +77,7 @@ export const Msg = {
         case 'REMATCH': return { t: 'REMATCH', player: int(f[1]) };
         case 'LEFT': return { t: 'LEFT', player: int(f[1]) };
         case 'CLEARED': return { t: 'CLEARED', player: int(f[1]) };
+        case 'LOOK': return /^[0-9a-f]{0,4000}$/.test(f[2] || '') ? { t: 'LOOK', player: int(f[1]), lines: f[2] || '' } : null;
         case 'VOTE': return { t: 'VOTE', player: int(f[1]), kind: f[2] === 'clear' ? 'clear' : 'hint' };
         case 'BALLOT': return { t: 'BALLOT', player: int(f[1]), for: int(f[2]), yes: f[3] === '1' };
         case 'VOTEEND': return { t: 'VOTEEND', player: int(f[1]), pass: f[2] === '1' };
@@ -259,7 +261,7 @@ export class Room {
         this.L('onLobby');
         return;
       }
-      case 'PROG': case 'DONE': case 'MARK': case 'REMATCH': case 'PING': case 'CLEARED': case 'VOTE': case 'BALLOT': case 'VOTEEND': {
+      case 'PROG': case 'DONE': case 'MARK': case 'REMATCH': case 'PING': case 'CLEARED': case 'VOTE': case 'BALLOT': case 'VOTEEND': case 'LOOK': {
         if (!this.peerPlayer.has(peer)) return;
         const from = this.peerPlayer.get(peer);
         let fixed = { ...msg, player: from };

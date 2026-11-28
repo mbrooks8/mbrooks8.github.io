@@ -19,6 +19,8 @@ import { diffLabel, factory, defaultName } from './common.js';
 import { timelapseRow } from './timelapse-row.js';
 import { leaveGame } from './app.js';
 import { joinRequestCard, lostCard, shareRoom, nextBoardCard } from './play-cards.js';
+import { packLines, lastCallDue, ordinal } from './race.js';
+import { createWatch, versusCard } from './race-ui.js';
 
 export function createPlay(ctx) {
   const { opts, board, title, loading, noteText, playersText, setNote, showLoading, refresh, start } = ctx;
@@ -78,6 +80,14 @@ export function createPlay(ctx) {
   };
   /** ★ marks whoever hosts right now (it moves when hosting moves). */
   const star = p => (room && p === (room.isHost ? room.me : room.hostSeat) ? '★ ' : '');
+  const pct = p => Math.floor((progress.get(p) || 0) * 100);
+  // Versus: friends who finished watch the ones still racing (race.js has the rules).
+  const watch = createWatch({ puzzle: () => ctx.game && ctx.game.puzzle, colorOf: p => colorOf(p), label: p => `${nameOf(p)} ${pct(p)}%` });
+  if (window.__fenceline) window.__fenceline.watch = watch;
+  const hostSeat = r => (r.isHost ? r.me : r.hostSeat);
+  const solvedHere = () => !!(ctx.game && ctx.game.isSolved());
+  // A racer can tap the players row to see how everyone is doing.
+  playersText.addEventListener('click', () => { if (mpMode === Mode.VERSUS && room && finished.size && ctx.game && !resultsD) showResults(); });
   const dotLine = (p, label) => el('span', { class: 'pl' }, pencilSwatch(room ? (room.pencils[p] || 0) : 0, theme.night, styleOf(p)), label);
 
   /** A row of pencils to pick from: the ones this player owns (friends may share one; they get another line pattern). Null when there is only one. */
@@ -114,15 +124,24 @@ export function createPlay(ctx) {
           startRound(p, same);
         } break;
         case 'PING': if (!(pingIn[msg.player] ||= new PingLimiter(0.7)).allow(performance.now())) break; board.showPing(msg.vertex, colorOf(msg.player), msg.x, msg.y, msg.kind); play('ping'); setNote(`${nameOf(msg.player)} says: ${pingGlyph(msg.kind) ? pingGlyph(msg.kind) : 'look here!'}`); break;
-        case 'PROG': if (msg.player !== r.me) { progress.set(msg.player, msg.fraction); updatePlayers(); fillResults(); } break;
-        case 'DONE':
-          // Someone else got there first: a kind little "well played".
-          if (msg.place === 1 && msg.player !== r.me && !finished.has(msg.player)) play('done');
+        case 'PROG': if (msg.player !== r.me) { progress.set(msg.player, msg.fraction); updatePlayers(); fillResults(); watch.relabel(); } break;
+        case 'LOOK': if (mpMode === Mode.VERSUS && msg.player !== r.me && !finished.has(msg.player)) watch.set(msg.player, msg.lines); break;
+        case 'DONE': {
+          const first = !finished.size, fresh = msg.player !== r.me && !finished.has(msg.player);
           finished.set(msg.player, [msg.ms, msg.hints, msg.place]);
           progress.set(msg.player, 1);
+          watch.done(msg.player);
           updatePlayers();
-          if (!resultsD) showResults(); else fillResults();
+          if (solvedHere()) { if (!resultsD) showResults(); else fillResults(); } else {
+            // Still racing: nothing covers the board. A kind little "well played", and keep going.
+            if (fresh && msg.place === 1) play('done');
+            if (fresh && msg.place > 0) setNote(msg.place === 1 ? `${nameOf(msg.player)} finished first! Keep going.` : `${nameOf(msg.player)} came ${ordinal(msg.place)}.`);
+            if (first) sendLook(true); // friends who are done can watch us from now on
+            fillResults();
+          }
+          checkSoon();
           break;
+        }
         case 'MARK': case 'STATE':
           // Skip a full sync that may predate our own very latest edit; the next one catches up.
           if (msg.t === 'STATE' && performance.now() - lastLocalEdit < 1500) return;
@@ -143,7 +162,7 @@ export function createPlay(ctx) {
           // the board. Someone still drawing: the host decides.
           wantsRematch.add(msg.player);
           setNote(`${nameOf(msg.player)} wants another round!`);
-          if (roundOver && msg.player !== r.hostSeat) askSoon();
+          if (!roundOver) checkSoon(); else if (msg.player !== r.hostSeat) askSoon();
           if (resultsCol) fillResults();
           break;
         }
@@ -160,7 +179,7 @@ export function createPlay(ctx) {
       }, 10000));
       later();
       progress.delete(player);
-      updatePlayers(); fillResults();
+      updatePlayers(); fillResults(); checkSoon();
     },
     onHostLost() {
       const had = !!room && room.me >= 0;
@@ -381,7 +400,16 @@ export function createPlay(ctx) {
       return;
     }
     if (soonText) soonText.textContent = `Next game in ${Math.ceil(ms / 1000)}…`;
+    if (mpMode === Mode.VERSUS && ctx.game && !solvedHere()) setNote(`Next game in ${Math.ceil(ms / 1000)}… finish your loop!`);
     soonTimer = setTimeout(tickSoon, 200);
+  };
+  /** Versus: friends still racing get a last call once the finishers are ready; it shortens when the last one is done. */
+  const checkSoon = () => {
+    const r = room;
+    if (!r || mpMode !== Mode.VERSUS || !ctx.game || ctx.mode !== 'mp') return;
+    const now = performance.now();
+    if (roundIsOver()) { if (rematch.started) { rematch.allDone(now); tickSoon(); } return; }
+    if (!rematch.started && lastCallDue(r.here, finished, wantsRematch, hostSeat(r))) { rematch.lastCall(now); tickSoon(); }
   };
   const stopSoon = () => { clearTimeout(soonTimer); soonTimer = 0; rematch.stop(); if (soonText) soonText.textContent = ''; };
 
@@ -411,6 +439,7 @@ export function createPlay(ctx) {
     if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
     if (coop) { coop.detach(); coop = null; }
     progress.clear(); finished.clear(); wantsRematch.clear(); stopSoon(); lastSentProgress = -1;
+    watch.clear(); clearTimeout(lookTimer); lookTimer = 0; lastLook = '';
     const g = keep ? ctx.game : new Game(p);
     g.localPlayer = Math.max(0, r.me);
     if (mpMode === Mode.COOP) {
@@ -467,6 +496,7 @@ export function createPlay(ctx) {
     const r = room;
     if (!r || mpMode !== Mode.VERSUS || r.me < 0) return;
     const p = g.progress();
+    sendLook(false);
     if (Math.abs(p - lastSentProgress) < 0.01) return;
     progress.set(r.me, p);
     updatePlayers();
@@ -475,6 +505,17 @@ export function createPlay(ctx) {
     const send = () => { progTimer = 0; lastProgAt = performance.now(); lastSentProgress = p; if (room) room.broadcast({ t: 'PROG', player: room.me, fraction: Math.round(p * 1000) / 1000 }); };
     clearTimeout(progTimer);
     if (now - lastProgAt > 300 || p >= 1) send(); else progTimer = setTimeout(() => sendProgress(ctx.game), 300 - (now - lastProgAt));
+  };
+
+  /** Versus, once someone has finished: our fence so far (about once a second), for them to watch. */
+  let lookTimer = 0, lastLookAt = 0, lastLook = '';
+  const sendLook = now => {
+    const r = room, g = ctx.game;
+    if (!r || mpMode !== Mode.VERSUS || r.me < 0 || !g || !finished.size || finished.has(r.me)) return;
+    const lines = packLines(g.marks);
+    if (lines === lastLook) return;
+    const go = () => { lookTimer = 0; lastLookAt = performance.now(); if (room && ctx.game === g) { lastLook = packLines(g.marks); room.broadcast({ t: 'LOOK', player: room.me, lines: lastLook }); } };
+    if (now || performance.now() - lastLookAt > 1000) { clearTimeout(lookTimer); go(); } else if (!lookTimer) lookTimer = setTimeout(go, 1000 - (performance.now() - lastLookAt));
   };
 
   const updatePlayers = () => {
@@ -490,8 +531,10 @@ export function createPlay(ctx) {
     const many = shown.length > 4;
     playersText.replaceChildren(...shown.map(p => {
       const label = star(p) + nameOf(p).slice(0, many ? 8 : 12) + (r.away[p] ? ' (away)' : '');
-      return dotLine(p, mpMode === Mode.VERSUS ? `${label} ${Math.floor((progress.get(p) || 0) * 100)}%` : label);
+      const f = finished.get(p);
+      return dotLine(p, mpMode === Mode.VERSUS ? `${label} ${f && f[2] > 0 ? ordinal(f[2]) : `${pct(p)}%`}` : label);
     }));
+    playersText.classList.toggle('tap', mpMode === Mode.VERSUS && finished.size > 0);
   };
 
   let mpEarned = 0, mpTl = null, mpRepeat = false;
@@ -506,7 +549,7 @@ export function createPlay(ctx) {
         finished.set(r.me, [g.elapsedMs, g.hintsUsed, d ? d.place : (prev ? prev[2] : 0)]);
         progress.set(r.me, 1);
       }
-      updatePlayers();
+      updatePlayers(); checkSoon();
       setTimeout(() => { if (ctx.disposed) return; if (!resultsD) showResults(); else fillResults(); }, showMs);
     } else {
       setTimeout(() => { if (!ctx.disposed) showResults(); }, showMs);
@@ -538,23 +581,7 @@ export function createPlay(ctx) {
         return dotLine(p, `${nameOf(p)}: ${n} piece${n === 1 ? '' : 's'}`);
       })));
     } else {
-      // The host numbers finishes as they arrive, so the first loop in real time wins (late joiners too).
-      let winner = null;
-      for (const [p, f] of finished) if (f[2] === 1) { winner = p; break; }
-      const head = winner == null ? 'Race on!' : (r && winner === r.me) ? 'You win!' : `${nameOf(winner)} wins!`;
-      const h = text(head, { size: 30, bold: true, cls: 'center' });
-      h.style.color = winner != null ? colorOf(winner) : theme.accent;
-      kids.push(h);
-      if (mpEarned) kids.push(text(`+${mpEarned} point${mpEarned === 1 ? '' : 's'}`, { size: 15, color: 'inkSoft', cls: 'center' }));
-      else if (mpRepeat) kids.push(text('Already solved, so no points', { size: 15, color: 'inkSoft', cls: 'center' }));
-      const rank = p => { const f = finished.get(p); return f ? (f[2] > 0 ? f[2] : 99) : 100; };
-      const order = players.slice().sort((a, b) => rank(a) - rank(b) || (progress.get(b) || 0) - (progress.get(a) || 0));
-      kids.push(el('div', { class: 'plist' }, ...order.map(p => {
-        const f = finished.get(p);
-        const line = f ? `${nameOf(p)}: ${formatTime(f[0])} · ` + (f[1] === 0 ? 'no hints' : `${f[1]} hint${f[1] === 1 ? '' : 's'}`)
-          : `${nameOf(p)}: still drawing (${Math.floor((progress.get(p) || 0) * 100)}%)`;
-        return dotLine(p, line);
-      })));
+      kids.push(...versusCard({ r, finished, progress, nameOf, colorOf, dotLine, watch, solved: g.isSolved(), earned: mpEarned, repeat: mpRepeat }));
       if (!g.isSolved()) kids.push(button('Keep drawing', () => { if (resultsD) resultsD.close(); resultsD = null; resultsCol = null; }, { size: 17 }));
     }
     const tlr = g.isSolved() ? timelapseRow(mpTl) : null;
@@ -569,8 +596,12 @@ export function createPlay(ctx) {
     soonText = text(soonTimer ? `Next game in ${Math.ceil(rematch.remaining(performance.now()) / 1000)}…` : rematch.started ? 'Waiting for the host…' : '', { size: 17, bold: true, color: 'accent', cls: 'center' });
     if (rematch.started) kids.push(soonText);
     if (r) {
-      kids.push(button(mpMode === Mode.COOP ? 'Play again' : 'Rematch', () => {
-        if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); wantsRematch.add(r.me); if (roundIsOver()) askSoon(); setNote('Asked the host for another round…'); fillResults(); }
+      const over = roundIsOver();
+      kids.push(button(mpMode === Mode.COOP ? 'Play again' : r.isHost && !over && rematch.started ? 'Start now' : 'Rematch', () => {
+        // Friends still racing: the host's first ask gives them a last call; asking again starts right away.
+        if (r.isHost && (roundIsOver() || rematch.started)) launchRound();
+        else if (r.isHost) { r.broadcast({ t: 'REMATCH', player: r.me }); wantsRematch.add(r.me); checkSoon(); fillResults(); }
+        else { r.broadcast({ t: 'REMATCH', player: r.me }); wantsRematch.add(r.me); if (roundIsOver()) askSoon(); else checkSoon(); setNote('Asked the host for another round…'); fillResults(); }
       }, { size: 20, kind: 'primary' }));
       if (r.isHost) kids.push(button('Change board', () => { stopSoon(); nextBoardDialog(); }, { size: 16 }));
     }
