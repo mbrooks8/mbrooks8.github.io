@@ -294,7 +294,7 @@ export function showGame(opts) {
     if (r === 'earned') hintVideos++;
     return r !== 'no' && !disposed;
   };
-  const hint = async () => {
+  const hint = async (voted = false) => {
     if (!game || game.isSolved()) return;
     let h = game.findHint();
     if (!h) return;
@@ -304,6 +304,8 @@ export function showGame(opts) {
       setNote(h.reason + ' Clear mistakes in the ⋯ menu erases them.');
       return;
     }
+    // Co-op: Hint is a vote. If it passes, the asker's phone takes it (and pays any free-hint / video) and everyone sees it.
+    if (!voted && mp.shared()) { mp.ask('hint', () => hint(true)); return; }
     if (!await mayHint()) return;
     const g = game;
     if (!g || g.isSolved()) return;
@@ -319,10 +321,11 @@ export function showGame(opts) {
   };
 
   /** Erases every wrong mark. It counts as a hint: in stats, the win card, the free-hint limit (a video after that) and co-op for everyone. */
-  const clearMistakes = async () => {
+  const clearMistakes = async (voted = false) => {
     const g = game;
     if (!g || g.isSolved()) return;
     if (!g.mistakes().length) { setNote('No mistakes!'); return; }
+    if (!voted && mp.shared()) { mp.ask('clear', () => clearMistakes(true)); return; }
     if (!await mayHint()) return;
     if (game !== g || g.isSolved()) return;
     track();
@@ -373,7 +376,7 @@ export function showGame(opts) {
     // Hint circles any wrong marks, else draws the next piece. Clear mistakes erases them and counts as a hint.
     // With "No hints" on it is Check, which only looks for mistakes.
     item(hintsOff() ? 'check' : 'bulb', hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint(), 'var(--hint)', 'shows the next move');
-    item('eraser', 'Clear mistakes', clearMistakes, undefined, 'erases marks that are wrong');
+    item('eraser', 'Clear mistakes', () => clearMistakes(), undefined, 'erases marks that are wrong');
     // A finished daily stays finished: no starting it over for another go.
     if (!multi && !(game && dailyLocked(game.puzzle))) item('restart', 'Start over', confirmReset, undefined, 'wipes the board');
     col.append(el('hr', { class: 'divider', style: 'margin:6px 0' }));
@@ -522,7 +525,7 @@ export function showGame(opts) {
 
   // Play together (lobby, rounds, co-op sync, joining, host moves) lives in play.js.
   const ctx = {
-    opts, board, title, loading, noteText, playersText, setNote, showLoading, refresh, start,
+    opts, root, board, title, loading, noteText, playersText, setNote, showLoading, refresh, start,
     get mode() { return mode; }, set mode(v) { mode = v; },
     get step() { return step; }, set step(v) { step = v; },
     get game() { return game; }, set game(v) { game = v; },

@@ -305,3 +305,16 @@ button.rowitem { cursor: pointer; min-height: 60px; }
 .openapp { display:flex; align-items:center; justify-content:space-between; gap:10px; z-index:30; top:calc(8px + var(--sat)); position:fixed; }
 .openapp-go { color: inherit; font-weight:bold; text-decoration:underline; }
 .openapp-x { background:none; border:0; font-size:22px; color:inherit; }
+
+/* Co-op hint vote: a note floating at the top left (nothing moves). A ping or hint note drops below it. */
+.votecard { position: absolute; left: 10px; top: calc(60px + var(--sat)); z-index: 5; width: min(230px, calc(100% - 20px)); padding: 10px 12px; background: var(--note); box-shadow: 0 2px 8px var(--shadow); font-size: 15px; }
+.votetitle { margin-bottom: 6px; }
+.votebar { height: 5px; margin-bottom: 8px; border-radius: 3px; background: var(--line, rgba(0,0,0,.12)); overflow: hidden; }
+.votebar > span { display: block; height: 100%; background: var(--hint); animation: votebar linear forwards; transform-origin: left; }
+@keyframes votebar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.voterow { align-items: center; }
+.voterow .chip { flex: 1; min-width: 0; }
+.votemsg { font-size: 14px; color: var(--inkSoft); }
+.votecount { margin-top: 6px; font-size: 13px; color: var(--inkSoft); font-variant-numeric: tabular-nums; }
+.voting .note.float { top: calc(190px + var(--sat)); }
+@media (prefers-reduced-motion: reduce) { .votebar > span { animation: none; } }

@@ -14,6 +14,7 @@ import { NearbyLink } from './nearby.js';
 import { scribble } from './shop.js';
 import { ownedPencils } from './cosmetics.js';
 import { play } from './sound.js';
+import { createVotes } from './vote-ui.js';
 import { GROUP_SIZES, JOIN_BASE, cap, diffLabel, factory, shareText, defaultName } from './common.js';
 import { leaveGame } from './app.js';
 
@@ -43,6 +44,7 @@ export function createPlay(ctx) {
   const laterNote = t => setNote(performance.now() - hostNoteAt < 6000 ? `${hostNote} ${t}` : t);
   const isHost = () => !!(room && room.isHost);
   const nameOf = p => (room && p === room.me) ? 'You' : (room && room.names[p]) || 'Friend';
+  const votes = createVotes({ root: ctx.root, getRoom: () => room, nameOf, setNote });
   const colorOf = p => pencilColor(room ? (room.pencils[p] || 0) : 0, theme.night);
   const styleOf = p => (room ? seatStyles(room.pencils, room.players)[p] : null) || 'solid';
   /** Everyone's special pencil looks (patterns, sparkles) go on the board too, so friends see yours. */
@@ -122,8 +124,14 @@ export function createPlay(ctx) {
         case 'MARK': case 'STATE':
           // Skip a full sync that may predate our own very latest edit; the next one catches up.
           if (msg.t === 'STATE' && performance.now() - lastLocalEdit < 1500) return;
-          if (coop && coop.apply(msg)) { if (msg.t === 'MARK') play('friend'); board.invalidate(); refresh(); }
+          if (coop && coop.apply(msg)) {
+            // A hint someone's friends voted for: everyone sees where it went.
+            if (msg.t === 'MARK' && msg.hint) { board.showHint(msg.edge, -1, -1); play('hint'); setNote(`${nameOf(msg.player)}'s hint, for everyone.`); }
+            else if (msg.t === 'MARK') play('friend');
+            board.invalidate(); refresh();
+          }
           break;
+        case 'VOTE': case 'BALLOT': case 'VOTEEND': if (coop) votes.onMessage(msg); break; // co-op: vote on a Hint or Clear mistakes (vote-ui.js)
         case 'CLEARED': // someone used Clear mistakes: a hint for the whole team
           if (coop && coop.apply(msg)) { setNote(`${nameOf(msg.player)} cleared mistakes.`); refresh(); }
           break;
@@ -591,12 +599,14 @@ export function createPlay(ctx) {
     get coop() { return coop; },
     get mpMode() { return mpMode; },
     get countingDown() { return countingDown; },
+    ask: votes.ask,
     nearby, shared, colorOf, sendProgress, mpSolved, startMultiplayer,
     /** The game screen is closing. */
     dispose() {
       document.removeEventListener('visibilitychange', onWake);
       for (const t of leftTimers.values()) clearTimeout(t);
       clearTimeout(awayTimer);
+      votes.dispose();
       clearTimeout(syncTimer); clearTimeout(countTimer); clearTimeout(progTimer); clearTimeout(soonTimer);
       if (coop) coop.detach();
       if (link) link.close();

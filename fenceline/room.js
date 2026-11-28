@@ -34,6 +34,9 @@ export const Msg = {
       case 'PING': return `PING\t${m.player}\t${m.vertex}` + (m.x != null && m.y != null ? `\t${+m.x.toFixed(3)}\t${+m.y.toFixed(3)}` + (m.kind ? `\t${m.kind}` : '') : '');
       case 'REMATCH': return `REMATCH\t${m.player}`;
       case 'LEFT': return `LEFT\t${m.player}`;
+      case 'VOTE': return `VOTE\t${m.player}\t${m.kind === 'clear' ? 'clear' : 'hint'}`; // co-op: asks everyone to vote on a Hint or Clear mistakes (older phones ignore it)
+      case 'BALLOT': return `BALLOT\t${m.player}\t${m.for}\t${m.yes ? 1 : 0}`; // a vote on the open question asked by seat [for]
+      case 'VOTEEND': return `VOTEEND\t${m.player}\t${m.pass ? 1 : 0}`; // the asker tells everyone how it went
       case 'CLEARED': return `CLEARED\t${m.player}`; // co-op: Clear mistakes was used (counts as a hint; older phones ignore it)
     }
     return '';
@@ -73,6 +76,9 @@ export const Msg = {
         case 'REMATCH': return { t: 'REMATCH', player: int(f[1]) };
         case 'LEFT': return { t: 'LEFT', player: int(f[1]) };
         case 'CLEARED': return { t: 'CLEARED', player: int(f[1]) };
+        case 'VOTE': return { t: 'VOTE', player: int(f[1]), kind: f[2] === 'clear' ? 'clear' : 'hint' };
+        case 'BALLOT': return { t: 'BALLOT', player: int(f[1]), for: int(f[2]), yes: f[3] === '1' };
+        case 'VOTEEND': return { t: 'VOTEEND', player: int(f[1]), pass: f[2] === '1' };
       }
     } catch (e) { /* bad message */ }
     return null;
@@ -253,7 +259,7 @@ export class Room {
         this.L('onLobby');
         return;
       }
-      case 'PROG': case 'DONE': case 'MARK': case 'REMATCH': case 'PING': case 'CLEARED': {
+      case 'PROG': case 'DONE': case 'MARK': case 'REMATCH': case 'PING': case 'CLEARED': case 'VOTE': case 'BALLOT': case 'VOTEEND': {
         if (!this.peerPlayer.has(peer)) return;
         const from = this.peerPlayer.get(peer);
         let fixed = { ...msg, player: from };
