@@ -1,7 +1,8 @@
 // The store: spend points on paper, ping emoji and pencils. Reached from Stats and Settings; no real money anywhere.
 import { el, text, button, chip, sk, dialog, theme, applyTheme, onThemeChange } from './ui.js';
 import { store } from './store.js';
-import { pencilColor, pencilLine } from './sketch.js';
+import { pencilColor, pencilLine, pencilFx, pencilAccent } from './sketch.js';
+import { drawFx, isAnimated } from './linefx.js';
 import { BACKGROUNDS, PING_PACKS, PENCIL_GOODS, canBuy, goodById } from './cosmetics.js';
 
 /** A wavy pencil scribble in pencil [i]'s colour (the dashes and dots of its line style are in the players list). */
@@ -11,10 +12,19 @@ export function scribble(i) {
     const dpr = Math.min(3, window.devicePixelRatio || 1);
     c.width = Math.round(44 * dpr); c.height = Math.round(30 * dpr);
     const ctx = c.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const col = pencilColor(i, theme.night);
+    const col = pencilColor(i, theme.night), fx = pencilFx(i), accent = pencilAccent(i);
     const pts = [[6, 22], [12, 8], [18, 20], [24, 8], [30, 18], [38, 9]];
-    for (let k = 0; k + 1 < pts.length; k++) pencilLine(ctx, pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], col, 3.4, i * 9 + k, 2);
+    const draw = t => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, 44, 30);
+      for (let k = 0; k + 1 < pts.length; k++) {
+        if (fx) drawFx(ctx, fx, pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], col, 3.4, i * 9 + k, t, accent, theme.night);
+        else pencilLine(ctx, pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], col, 3.4, i * 9 + k, 2);
+      }
+    };
+    draw(null);
+    // Moving lines move here too (a few small pictures, about 18 frames a second, only while they are on screen).
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (isAnimated(fx) && !calm) { const tick = () => { if (!c.isConnected) return; draw(performance.now()); setTimeout(tick, 55); }; tick(); }
   });
   return c;
 }

@@ -1,12 +1,14 @@
 // Play together: a port of the Android app's core/Room.kt (same text protocol), so the
 // transport underneath (here WebRTC through PeerJS) is the only thing that differs.
 import { Puzzle } from './core.js';
+import { EXTRA_PENCILS as STORE_PENCILS } from './pencils.js';
+const EXTRA_PENCIL_COUNT = STORE_PENCILS.length;
 
 export const Mode = { VERSUS: 'VERSUS', COOP: 'COOP' };
 export const SEATS = 32;
 export const PENCILS = 5;
 /** Pencils bought in the store are numbered from 100 (see sketch.js EXTRA_PENCILS); older phones draw them in a plain colour. */
-export const EXTRA_PENCIL_BASE = 100, EXTRA_PENCILS = 8;
+export const EXTRA_PENCIL_BASE = 100, EXTRA_PENCILS = EXTRA_PENCIL_COUNT; // the store's pencils are numbered from 100 (web/pencils.js lists them; add only at the end)
 export const RECENT_MS = 15000;
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[\t\u001f\n\r]/g, ' ').slice(0, max);

@@ -7,12 +7,11 @@ import { RematchClock } from './rematch.js';
 import { PingLimiter, pingGlyph } from './pings.js';
 import { store, formatTime } from './store.js';
 import { theme, el, text, button, chip, dialog, sk, setRoomPaper } from './ui.js';
-import { pencilColor, pencilSwatch, seatStyles } from './sketch.js';
+import { pencilColor, pencilStyle, pencilSwatch, seatStyles, pencilFx, pencilAccent } from './sketch.js';
 import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
 import { Link } from './net.js';
 import { NearbyLink } from './nearby.js';
 import { scribble } from './shop.js';
-import { MP_POINTS } from './points.js';
 import { ownedPencils } from './cosmetics.js';
 import { play } from './sound.js';
 import { GROUP_SIZES, JOIN_BASE, cap, diffLabel, factory, shareText, defaultName } from './common.js';
@@ -46,6 +45,14 @@ export function createPlay(ctx) {
   const nameOf = p => (room && p === room.me) ? 'You' : (room && room.names[p]) || 'Friend';
   const colorOf = p => pencilColor(room ? (room.pencils[p] || 0) : 0, theme.night);
   const styleOf = p => (room ? seatStyles(room.pencils, room.players)[p] : null) || 'solid';
+  /** Everyone's special pencil looks (patterns, sparkles) go on the board too, so friends see yours. */
+  const setFx = () => {
+    const pc = p => (room ? (room.pencils[p] || 0) : 0);
+    // Friends who share a pencil: only the first keeps its special look, the others get a line pattern (seatStyles) so they stay tellable apart.
+    board.ownerFx = Array.from({ length: SEATS }, (_, i) => (styleOf(i) === pencilStyle(pc(i)) ? pencilFx(pc(i)) : ''));
+    board.ownerAccents = Array.from({ length: SEATS }, (_, i) => pencilAccent(pc(i)));
+    board.night = theme.night;
+  };
   const boardLabelOf = (sh, w, h, d) => `${Boards.label(sh, w, h)} ${diffLabel(d)}`;
   // Players away for a while drop off the list (they keep their seat, colour and fences if they come back).
   const AWAY_SHOWN_MS = 30000;
@@ -361,10 +368,10 @@ export function createPlay(ctx) {
       coop = new CoopBoard(g, r);
       const send = g.onLocalChange;
       g.onLocalChange = (e, v, h) => { lastLocalEdit = performance.now(); if (send) send(e, v, h); };
-      board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i)); board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i));
+      board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i)); board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i)); setFx();
       board.onPing = (v, x, y, kind) => { board.showPing(v, colorOf(r.me), x, y, kind); if (room) room.broadcast({ t: 'PING', player: room.me, vertex: v, x, y, ...(kind ? { kind } : {}) }); };
     } else {
-      board.ownerColors = null; board.ownerStyles = null;
+      board.ownerColors = null; board.ownerStyles = null; board.ownerFx = null; board.ownerAccents = null;
       board.onPing = null;
       board.pingArmed = false;
     }
@@ -428,6 +435,7 @@ export function createPlay(ctx) {
     if (mpMode === Mode.COOP) { // late joiners too
       board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i));
       board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i));
+      setFx();
     }
     const shown = shownPlayers(r);
     const many = shown.length > 4;
@@ -437,7 +445,9 @@ export function createPlay(ctx) {
     }));
   };
 
-  const mpSolved = (g, showMs = 1300) => {
+  let mpEarned = 0;
+  const mpSolved = (g, showMs = 1300, earned = 0) => {
+    mpEarned = earned;
     const r = room;
     if (mpMode === Mode.VERSUS) {
       if (r && r.me >= 0) {
@@ -471,7 +481,7 @@ export function createPlay(ctx) {
       kids.push(text('Solved together!', { size: 30, bold: true, color: 'accent', cls: 'center' }));
       const hints = g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`;
       kids.push(text(`Time ${formatTime(g.elapsedMs)} · ${hints}`, { size: 18, cls: 'center' }));
-      kids.push(text(`+${MP_POINTS} point`, { size: 15, color: 'inkSoft', cls: 'center' }));
+      if (mpEarned) kids.push(text(`+${mpEarned} point${mpEarned === 1 ? '' : 's'}`, { size: 15, color: 'inkSoft', cls: 'center' }));
       kids.push(el('div', { class: 'plist center' }, ...players.map(p => {
         let n = 0; for (let e = 0; e < g.grid.edgeCount; e++) if (g.marks[e] === Edge.LINE && g.owner[e] === p) n++;
         return dotLine(p, `${nameOf(p)}: ${n} piece${n === 1 ? '' : 's'}`);
@@ -484,6 +494,7 @@ export function createPlay(ctx) {
       const h = text(head, { size: 30, bold: true, cls: 'center' });
       h.style.color = winner != null ? colorOf(winner) : theme.accent;
       kids.push(h);
+      if (mpEarned) kids.push(text(`+${mpEarned} point${mpEarned === 1 ? '' : 's'}`, { size: 15, color: 'inkSoft', cls: 'center' }));
       const rank = p => { const f = finished.get(p); return f ? (f[2] > 0 ? f[2] : 99) : 100; };
       const order = players.slice().sort((a, b) => rank(a) - rank(b) || (progress.get(b) || 0) - (progress.get(a) || 0));
       kids.push(el('div', { class: 'plist' }, ...order.map(p => {

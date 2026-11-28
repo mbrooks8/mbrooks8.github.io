@@ -16,7 +16,8 @@ import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
 import { leaveGame, setScreen, showMenu } from './app.js';
 import * as ads from './ads.js';
 import { recordScores } from './leaderboards.js';
-import { MP_POINTS } from './points.js';
+import { winPoints } from './points.js';
+import { pencilFx, pencilAccent } from './sketch.js';
 
 export function showGame(opts) {
   let mode = opts.mode, step = opts.step || 0;
@@ -109,6 +110,7 @@ export function showGame(opts) {
   const applySettings = () => {
     board.palette = theme.pal;
     board.pencilColor = theme.accent;
+    board.pencilFx = pencilFx(store.pencil); board.pencilAccent = pencilAccent(store.pencil); board.night = theme.night;
     board.showErrors = store.showErrors;
     board.haptics = store.haptics;
     board.plainNumbers = store.plainNumbers;
@@ -417,6 +419,18 @@ export function showGame(opts) {
     ), { closeX: false });
   };
 
+  /** Points for a finished Play together game. Co-op: nothing for someone who drew no piece of the loop. */
+  const mpPoints = g => {
+    const r = mp.room;
+    if (mp.mpMode === Mode.COOP && r && r.me >= 0) {
+      let mine = 0;
+      for (let e = 0; e < g.grid.edgeCount; e++) if (g.marks[e] === Edge.LINE && g.owner[e] === r.me) mine++;
+      if (!mine) return 0;
+    }
+    const p = g.puzzle;
+    return winPoints({ cells: p.width * p.height, difficulty: p.difficulty || 'EASY', hints: g.hintsUsed, daily: false });
+  };
+
   const onSolved = alreadyDone => {
     const g = game;
     if (!g) return;
@@ -431,7 +445,12 @@ export function showGame(opts) {
     const daily = mode === 'daily' && isTodaysDaily(g.puzzle); // a daily finished after midnight is just a puzzle
     const kind = daily ? 'daily' : mode !== 'mp' ? '' : mp.mpMode === Mode.COOP ? 'coop' : 'versus';
     if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind, keepRecording(g));
-    if (mode === 'mp') { if (!alreadyDone) { board.buzz(40); store.addPoints(MP_POINTS); } mp.mpSolved(g, showMs); return; } // Play together: 1 point to each player who finishes
+    if (mode === 'mp') { // Play together: versus gives every finisher the puzzle's points; co-op, everyone who drew part of the loop
+      let got = 0;
+      if (!alreadyDone) { board.buzz(40); got = mpPoints(g); store.addPoints(got); }
+      mp.mpSolved(g, showMs, got);
+      return;
+    }
     if (!alreadyDone && mode !== 'tutorial') ads.noteWin();
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);

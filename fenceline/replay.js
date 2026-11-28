@@ -5,7 +5,7 @@ import { formatTime } from './store.js';
 import { el, dialog, theme, sk } from './ui.js';
 import { icon } from './icons.js';
 import { BoardView } from './board.js';
-import { pencilColor, pencilStyle, pencilSwatch, pencilLine, pencilCircle } from './sketch.js';
+import { pencilColor, pencilStyle, pencilSwatch, pencilLine, pencilCircle, pencilFx, pencilAccent } from './sketch.js';
 import { factory, diffLabel } from './common.js';
 import { Recorder, Kind, findTimelapse, playbackTimes, hintEvents } from './timelapse.js';
 import { canMakeVideo, createVideoCapture, drawVideoFrame, saveVideo } from './replay-video.js';
@@ -174,6 +174,9 @@ export function replayDialog(entry) {
       // Co-op: each fence in the pencil (colour and line style) of whoever drew it.
       board.ownerColors = Array.from({ length: 256 }, (_, i) => rec.players.has(i) ? pencilColor(rec.players.get(i)[0], theme.night) : theme.accent);
       board.ownerStyles = Array.from({ length: 256 }, (_, i) => rec.players.has(i) ? pencilStyle(rec.players.get(i)[0]) : 'solid');
+      board.ownerFx = Array.from({ length: 256 }, (_, i) => rec.players.has(i) ? pencilFx(rec.players.get(i)[0]) : '');
+      board.ownerAccents = Array.from({ length: 256 }, (_, i) => rec.players.has(i) ? pencilAccent(rec.players.get(i)[0]) : '#FFFFFF');
+      board.night = theme.night;
       who.replaceChildren(...[...rec.players.values()].map(([pc, nm]) => el('span', { class: 'pl' }, pencilSwatch(pc, theme.night), nm || 'Friend')));
       who.hidden = rec.players.size < 2;
     }

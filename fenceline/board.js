@@ -26,6 +26,8 @@ export class BoardView {
     /** Co-op: pencil colour per player id; fences are drawn in their owner's colour. */
     this.ownerColors = null;
     this.ownerStyles = null; // solid, dashed or dotted per seat (co-op)
+    this.ownerFx = null; this.ownerAccents = null; // special pencil looks per seat (see linefx.js)
+    this.pencilFx = ''; this.pencilAccent = '#FFFFFF'; this.night = false; // the same for your own pencil
     /** Co-op "look here": called with (nearest dot, x, y in edge lengths) by the Ping button or a long-press on a dot. */
     this.onPing = null;
     this.pings = [];

@@ -1,5 +1,7 @@
 // Coloured-pencil drawing on canvas: palette, paper, pencil strokes and hand-drawn boxes.
 // (Ported from the 1.x Android app.)
+import { EXTRA_PENCILS, extraPencil } from './pencils.js';
+export { EXTRA_PENCILS };
 
 // Pencils chosen to stay tellable apart with colour blindness too (red-green and blue-yellow).
 export const PENCILS = [
@@ -16,19 +18,7 @@ const STYLES = ['solid', 'dashed', 'dotted'];
 /** Every line pattern, in the order players who share a pencil colour are given them. */
 export const LINE_STYLES = ['solid', 'dashed', 'dotted', 'zigzag'];
 
-/**
- * Pencils from the store, numbered from 100. Each has its own line style besides its colour, so friends can tell them
- * apart without colour (the name is in the store and the players list too).
- */
-export const EXTRA_PENCILS = [
-  { name: 'Forest', day: '#3E7B4B', night: '#8FD19B', style: 'solid' },
-  { name: 'Plum', day: '#7B3F8F', night: '#C69AE0', style: 'dashed' },
-  { name: 'Teal', day: '#1E8C8C', night: '#6FD6D2', style: 'dotted' },
-  { name: 'Cocoa', day: '#6B4630', night: '#C9A383', style: 'dashed' },
-  { name: 'Lime', day: '#7F9A1F', night: '#C6E05A', style: 'dotted' },
-  { name: 'Cherry', day: '#B01E4A', night: '#F27A9E', style: 'solid' },
-];
-const extra = i => (i >= 100 && i < 100 + EXTRA_PENCILS.length ? EXTRA_PENCILS[i - 100] : null);
+const extra = i => extraPencil(i);
 
 export const DAY = {
   paper: '#F5EDDC', paperShade: '#EDE2CC', ink: '#4A4641', inkSoft: '#9A8F80', done: '#6A9A5B',
@@ -64,6 +54,18 @@ export function pencilStyle(index) {
   const ex = extra(index | 0);
   if (ex) return ex.style;
   return STYLES[Math.floor(Math.max(0, index | 0) / 6) % 3];
+}
+
+/** The special look of a pencil's line ('wave', 'sparkle', 'rainbow'...), or '' for a plain one. See linefx.js. */
+export function pencilFx(index) {
+  const ex = extra(index | 0);
+  return (ex && ex.fx) || '';
+}
+
+/** The sparkle colour of a pencil that has one. */
+export function pencilAccent(index) {
+  const ex = extra(index | 0);
+  return (ex && ex.accent) || '#FFFFFF';
 }
 
 /**

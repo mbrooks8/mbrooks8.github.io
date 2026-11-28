@@ -3,6 +3,9 @@ import { CONFETTI_MS, GLOW_FADE_MS } from './board-celebrate.js';
 import { Edge } from './core.js';
 import { pingGlyph } from './pings.js';
 import { pencilHatch, rgba, blend, pencilLine, pencilCircle } from './sketch.js';
+import { drawFx, isAnimated } from './linefx.js';
+
+const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
 
 const PING_MS = 2500;
@@ -28,7 +31,8 @@ export class BoardDraw {
     const g = gm.grid;
     const unit = g.edgeLength * this.scale;
     const lineW = Math.max(3, unit * 0.12);
-    let animate = false;
+    let animate = false, fxMoving = false;
+    const fxClock = reducedMotion() ? null : performance.now();
 
     // Faint guide lines for non-square boards, where the cell outline isn't obvious from dots.
     if (g.shape.code !== '') {
@@ -130,7 +134,11 @@ export class BoardDraw {
         const col = gm.hinted[e] ? blend(base, pal.hint, 0.45) : base;
         const style = (who >= 0 && this.ownerStyles && this.ownerStyles[who]) || 'solid';
         const ax = x0 + ix, ay = y0 + iy, bx = x1 - ix, by = y1 - iy;
-        if (style === 'solid') pencilLine(ctx, ax, ay, bx, by, col, lineW, e * 7919 + 3);
+        const fx = gm.hinted[e] ? '' : ((who >= 0 ? this.ownerFx && this.ownerFx[who] : this.pencilFx) || ''); // a hinted piece stays amber
+        if (fx) {
+          drawFx(ctx, fx, ax, ay, bx, by, col, lineW, e * 7919 + 3, fxClock, (who >= 0 && this.ownerAccents && this.ownerAccents[who]) || this.pencilAccent || '#FFFFFF', this.night);
+          if (isAnimated(fx) && fxClock != null) fxMoving = true;
+        } else if (style === 'solid') pencilLine(ctx, ax, ay, bx, by, col, lineW, e * 7919 + 3);
         else if (style === 'zigzag') {
           // A zigzag across the gap: four little strokes to and fro.
           const nx = -(by - ay) / Math.max(1, Math.hypot(bx - ax, by - ay)) * unit * 0.07, ny = (bx - ax) / Math.max(1, Math.hypot(bx - ax, by - ay)) * unit * 0.07;
@@ -263,5 +271,6 @@ export class BoardDraw {
       if (this.confettiStart) animate = true;
     }
     if (animate) this.invalidate();
+    else if (fxMoving && !document.hidden && !this.fxTimer) this.fxTimer = setTimeout(() => { this.fxTimer = 0; this.invalidate(); }, 55); // moving lines: about 18 frames a second
   }
 }
