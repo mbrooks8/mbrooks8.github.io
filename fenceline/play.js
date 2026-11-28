@@ -3,6 +3,7 @@
 // showGame (app.js) calls createPlay(ctx); ctx is the game screen's shared state (see showGame).
 // The room logic itself (seats, protocol) is room.js; transports are net.js (online) and nearby.js (Android).
 import { Shape, Edge, Game, PuzzleCode, Boards } from './core.js';
+import { RematchClock } from './rematch.js';
 import { PingLimiter, pingGlyph } from './pings.js';
 import { store, formatTime } from './store.js';
 import { theme, el, text, button, chip, dialog } from './ui.js';
@@ -22,7 +23,7 @@ export function createPlay(ctx) {
   let mpMode = opts.mpMode || Mode.VERSUS, mpW = opts.w || 7, mpH = opts.h || 7, mpDiff = opts.d || 'EASY', mpShape = opts.shape || Shape.SQUARE;
   let lobbyD = null, lobbyCol = null, lobbyStatus = '', resultsD = null, resultsCol = null;
   let countingDown = false, hostPuzzle = null, startWhenReady = false, lastSentProgress = -1, lastProgAt = 0, progTimer = 0;
-  let lastLocalEdit = -Infinity, round = 0, syncTimer = 0, countTimer = 0, soonTimer = 0, soonLeft = 0, soonText = null, roomCode = opts.code || '';
+  let lastLocalEdit = -Infinity, round = 0, syncTimer = 0, countTimer = 0, soonTimer = 0, soonText = null, roomCode = opts.code || '';
   const nearby = opts.via === 'nearby'; // Android app, same room over Nearby (else online)
   const progress = new Map(), finished = new Map(); // finished: player -> [ms, hints, place]
   const wantsRematch = new Set(); // players who asked for another round
@@ -100,12 +101,12 @@ export function createPlay(ctx) {
           if (coop && coop.apply(msg)) { setNote(`${nameOf(msg.player)} cleared mistakes.`); refresh(); }
           break;
         case 'REMATCH': {
+          const roundOver = roundIsOver();
           // Round over: the next one starts by itself in a few seconds, so the host still has time to change
           // the board. Someone still drawing: the host decides.
-          const roundOver = mpMode === Mode.COOP ? !!(ctx.game && ctx.game.isSolved()) : r.here.every(p => finished.has(p));
           wantsRematch.add(msg.player);
           setNote(`${nameOf(msg.player)} wants another round!`);
-          if (r.isHost && roundOver) startSoon();
+          if (roundOver && msg.player !== r.hostSeat) askSoon();
           if (resultsCol) fillResults();
           break;
         }
@@ -142,6 +143,7 @@ export function createPlay(ctx) {
       const msg = `${r.names[from] || 'The host'} left. You're hosting now.`;
       if (ctx.game && ctx.mode === 'mp') moveNote(msg); else lobbyStatus = msg;
       prepareNextPuzzle();
+      if (rematch.started) tickSoon(); // carry on with the countdown the last host left
       if (coop) scheduleSync();
       fillLobby(); fillResults(); updatePlayers();
     },
@@ -287,21 +289,23 @@ export function createPlay(ctx) {
     col.replaceChildren(...kids);
   };
 
-  /** Host: someone asked for another round. Count down, so there's still time to tap Change board. */
-  const NEXT_IN = 10;
-  const startSoon = () => {
-    if (soonTimer) return;
-    soonLeft = NEXT_IN;
-    const tick = () => {
-      if (ctx.disposed) return;
-      if (soonLeft <= 0) { soonTimer = 0; launchRound(); return; }
-      if (soonText) soonText.textContent = `Next game in ${soonLeft}…`;
-      soonLeft--;
-      soonTimer = setTimeout(tick, 1000);
-    };
-    tick();
+  const roundIsOver = () => mpMode === Mode.COOP ? !!(ctx.game && ctx.game.isSolved()) : !!room && room.here.every(p => finished.has(p));
+  /** A guest asked for another round. Everyone sees the countdown; each further ask speeds it up. The host starts it. */
+  const rematch = new RematchClock();
+  const askSoon = () => { rematch.ask(performance.now()); tickSoon(); };
+  const tickSoon = () => {
+    clearTimeout(soonTimer); soonTimer = 0;
+    if (ctx.disposed || !rematch.started) return;
+    const ms = rematch.remaining(performance.now());
+    if (ms <= 0) {
+      if (isHost()) { launchRound(); return; }
+      if (soonText) soonText.textContent = 'Waiting for the host…'; // (and if the host drops now, the next one starts it)
+      return;
+    }
+    if (soonText) soonText.textContent = `Next game in ${Math.ceil(ms / 1000)}…`;
+    soonTimer = setTimeout(tickSoon, 200);
   };
-  const stopSoon = () => { clearTimeout(soonTimer); soonTimer = 0; if (soonText) soonText.textContent = ''; };
+  const stopSoon = () => { clearTimeout(soonTimer); soonTimer = 0; rematch.stop(); if (soonText) soonText.textContent = ''; };
 
   /** Host: start a round with the prepared puzzle (or as soon as it's ready). */
   const launchRound = () => {
@@ -328,7 +332,7 @@ export function createPlay(ctx) {
     if (lobbyD) { lobbyD.close(); lobbyD = null; lobbyCol = null; }
     if (resultsD) { resultsD.close(); resultsD = null; resultsCol = null; }
     if (coop) { coop.detach(); coop = null; }
-    progress.clear(); finished.clear(); wantsRematch.clear(); lastSentProgress = -1;
+    progress.clear(); finished.clear(); wantsRematch.clear(); stopSoon(); lastSentProgress = -1;
     const g = keep ? ctx.game : new Game(p);
     g.localPlayer = Math.max(0, r.me);
     if (mpMode === Mode.COOP) {
@@ -472,11 +476,11 @@ export function createPlay(ctx) {
       const t = wantsRematch.has(r.me) && !r.isHost ? 'Asked the host for another round…' : asks.length ? `${asks.join(', ')} ${asks.length === 1 ? 'wants' : 'want'} another round!` : '';
       if (t) kids.push(text(t, { size: 15, color: 'inkSoft', cls: 'center' }));
     }
-    soonText = text(soonTimer ? `Next game in ${soonLeft + 1}…` : '', { size: 17, bold: true, color: 'accent', cls: 'center' });
-    if (soonTimer) kids.push(soonText);
+    soonText = text(soonTimer ? `Next game in ${Math.ceil(rematch.remaining(performance.now()) / 1000)}…` : rematch.started ? 'Waiting for the host…' : '', { size: 17, bold: true, color: 'accent', cls: 'center' });
+    if (rematch.started) kids.push(soonText);
     if (r) {
       kids.push(button(mpMode === Mode.COOP ? 'Play again' : 'Rematch', () => {
-        if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); wantsRematch.add(r.me); setNote('Asked the host for another round…'); fillResults(); }
+        if (r.isHost) launchRound(); else { r.broadcast({ t: 'REMATCH', player: r.me }); wantsRematch.add(r.me); if (roundIsOver()) askSoon(); setNote('Asked the host for another round…'); fillResults(); }
       }, { size: 20, kind: 'primary' }));
       if (r.isHost) kids.push(button('Change board', () => { stopSoon(); nextBoardDialog(); }, { size: 16 }));
     }
