@@ -5,7 +5,7 @@ import { wardrobeDialog } from './wardrobe.js';
 import { pencilColor, pencilLine, pencilFx, pencilAccent } from './sketch.js';
 import { drawFx, isAnimated } from './linefx.js';
 import { BACKGROUNDS, PING_PACKS, PENCIL_GOODS, canBuy, goodById } from './cosmetics.js';
-import { motifPreview } from './stationery.js';
+import { motifPreview, tileSize, MOTIFS } from './stationery.js';
 
 /** A wavy pencil scribble in pencil [i]'s colour (the dashes and dots of its line style are in the players list). */
 export function scribble(i) {
@@ -33,7 +33,8 @@ export function scribble(i) {
 
 export const paperSample = bg => {
   const pal = { ...theme.pal, ...((theme.night ? bg.night : bg.day) || {}) };
-  const doodle = bg.motif ? `${motifPreview(bg.motif, theme.night)} center / 40px 27px no-repeat, ` : '';
+  const m = bg.motif && MOTIFS[bg.motif];
+  const doodle = !m ? '' : m.grid ? `${motifPreview(bg.motif, theme.night)} 0 0 / ${tileSize(bg.motif) / 3}px repeat, ` : `${motifPreview(bg.motif, theme.night)} center / 40px 27px no-repeat, `;
   return el('span', { class: 'paperprev', 'aria-hidden': 'true', style: { background: `${doodle}repeating-linear-gradient(transparent 0 7px, ${pal.ruling} 7px 8px), ${pal.paper}` } });
 };
 

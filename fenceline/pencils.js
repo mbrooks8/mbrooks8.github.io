@@ -39,6 +39,18 @@ export const EXTRA_PENCILS = [
   { name: 'Confetti', day: '#D0527A', night: '#F59AB8', style: 'solid', fx: 'confetti', rarity: 'epic' },
   { name: 'Aurora', day: '#2FA58A', night: '#7FF0CF', style: 'solid', fx: 'aurora', rarity: 'legendary' },
   { name: 'Rainbow', day: '#E0508C', night: '#FF9CC4', style: 'solid', fx: 'rainbow', rarity: 'legendary' },
+  // Cute patterns.
+  { name: 'Paw prints', day: '#8A5A3C', night: '#D9AE8E', style: 'solid', fx: 'paws', rarity: 'rare' },
+  { name: 'Hearts', day: '#C83E6A', night: '#F59CB8', style: 'solid', fx: 'hearts', rarity: 'uncommon' },
+  { name: 'Vine', day: '#4E8A3A', night: '#9ED67E', style: 'solid', fx: 'vine', rarity: 'rare' },
+  { name: 'Fish scales', day: '#2C7FA8', night: '#86C9EC', style: 'solid', fx: 'scales', rarity: 'rare' },
+  { name: 'Gingham', day: '#C0504D', night: '#F29A93', style: 'solid', fx: 'gingham', rarity: 'uncommon' },
+  { name: 'Pastel stripes', day: '#B0609A', night: '#E8A6D6', style: 'solid', fx: 'pastel', rarity: 'rare' },
+  { name: 'Highlighter', day: '#C99A10', night: '#F2D45C', style: 'solid', fx: 'highlight', rarity: 'uncommon' },
+  // Christmas.
+  { name: 'Candy cane', day: '#C8283A', night: '#FF7F8A', style: 'solid', fx: 'candycane', rarity: 'rare' },
+  { name: 'Holly', day: '#2F7A45', night: '#86D69C', style: 'solid', fx: 'holly', rarity: 'rare' },
+  { name: 'Fairy lights', day: '#3B5A3A', night: '#B6D6A8', style: 'solid', fx: 'lights', rarity: 'epic' },
 ];
 
 /** The store pencil for a wire number, or null (a number from a newer app, or a plain pencil). */

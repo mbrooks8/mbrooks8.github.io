@@ -33,7 +33,7 @@ body {
     var(--paperImg, none);
   background-attachment: fixed, local, fixed, fixed, fixed;
   background-repeat: repeat, repeat, no-repeat, repeat, repeat;
-  background-size: auto, auto, 132px 88px, 240px 240px, auto;
+  background-size: auto, auto, 132px 88px, var(--motifSize, 240px) var(--motifSize, 240px), auto;
   background-position: 0 0, 0 0, right 4px bottom var(--sab), 0 0, 0 0;
   color: var(--ink);
   font-family: var(--hand);
@@ -44,6 +44,21 @@ body {
   -webkit-touch-callout: none;
 }
 #app { height: 100%; }
+/* Moving papers: one oversized layer that slides exactly one tile (240px) and starts again, so it loops without a seam. */
+.paperfx { position: fixed; top: -240px; left: -240px; right: -240px; bottom: -240px; z-index: -1; pointer-events: none;
+  background-image: var(--fxImg); background-size: 240px 240px; will-change: transform; }
+.paperfx.fx-glow::after { content: ""; position: absolute; inset: 0; background-image: var(--fxImg); background-size: 240px 240px;
+  background-position: 120px 90px; animation: fxPulse 3.4s ease-in-out infinite alternate; }
+.fx-fall { animation: fxFall 30s linear infinite; }
+.fx-swim { animation: fxSwim 45s linear infinite; }
+.fx-drift { animation: fxDrift 36s linear infinite; }
+.fx-glow { animation: fxRise 60s linear infinite; }
+@keyframes fxFall { to { transform: translate3d(0, 240px, 0); } }
+@keyframes fxSwim { to { transform: translate3d(-240px, 0, 0); } }
+@keyframes fxDrift { to { transform: translate3d(240px, 240px, 0); } }
+@keyframes fxRise { to { transform: translate3d(0, -240px, 0); } }
+@keyframes fxPulse { from { opacity: .35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .paperfx, .paperfx::after { animation: none !important; } }
 button { font: inherit; color: inherit; }
 a { color: var(--accent); }
 [hidden] { display: none !important; }

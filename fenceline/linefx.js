@@ -3,11 +3,30 @@
 // Kept light on purpose: a few strokes per piece, no blur, and the board only redraws about 18 times a second for them.
 import { pencilLine, rng, blend } from './sketch.js';
 
-const ANIMATED = new Set(['sparkle', 'ember', 'confetti', 'aurora', 'rainbow']);
+const ANIMATED = new Set(['sparkle', 'ember', 'confetti', 'aurora', 'rainbow', 'lights']);
 /** Does this look move? (The board only keeps redrawing while a moving line is on it.) */
 export const isAnimated = fx => ANIMATED.has(fx);
 
 const CONFETTI = ['#E8505B', '#F2B33D', '#4CAF7A', '#4A8FD6', '#A863C9'];
+const PASTEL_DAY = ['#E58FA8', '#6FB59A', '#9A87D6', '#E0A84E'];
+const PASTEL_NIGHT = ['#F7B6C8', '#9FE0C4', '#C6B8F5', '#F5D08A'];
+const BULBS = ['#E8505B', '#F2B33D', '#4CAF7A', '#4A8FD6'];
+
+/** A small heart centred on (x, y), pointing along [ux, uy]'s normal. */
+function heart(ctx, x, y, r, col, alpha = 1) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = col; ctx.beginPath();
+  ctx.moveTo(x, y + r * 0.9);
+  ctx.bezierCurveTo(x - r * 1.5, y - r * 0.1, x - r * 0.7, y - r * 1.3, x, y - r * 0.45);
+  ctx.bezierCurveTo(x + r * 0.7, y - r * 1.3, x + r * 1.5, y - r * 0.1, x, y + r * 0.9);
+  ctx.fill(); ctx.restore();
+}
+
+/** A leaf (or petal) along angle [ang]. */
+function leaf(ctx, x, y, len, ang, col, alpha = 0.9) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.globalAlpha = alpha; ctx.fillStyle = col; ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.quadraticCurveTo(len * 0.5, -len * 0.45, len, 0); ctx.quadraticCurveTo(len * 0.5, len * 0.45, 0, 0);
+  ctx.fill(); ctx.restore();
+}
 
 /** A smooth stroke through points, twice: once firm, once faint and a little off, like pencil. */
 function strokePath(ctx, pts, col, w, seed) {
@@ -127,6 +146,98 @@ export function drawFx(ctx, fx, ax, ay, bx, by, col, w, seed, t, accent = '#FFFF
       const g = ctx.createLinearGradient(ax, ay, bx, by);
       g.addColorStop(0, `hsl(${hue(ax, ay)} 80% ${l}%)`); g.addColorStop(1, `hsl(${hue(bx, by)} 80% ${l}%)`);
       return pencilLine(ctx, ax, ay, bx, by, g, w, seed);
+    }
+    case 'paws': {
+      // A thin line with paw prints stepping along it, left and right.
+      pencilLine(ctx, ax, ay, bx, by, col, w * 0.5, seed);
+      const n = Math.max(2, Math.round(L / (w * 3.6)));
+      for (let i = 0; i < n; i++) {
+        const side = i % 2 ? 1 : -1, [x, y] = at((i + 0.5) / n, side * w * 0.55);
+        dot(ctx, x, y, w * 0.5, col, 0.95);
+        for (const [s1, o1] of [[0.55, -0.62], [0.78, 0], [0.55, 0.62]]) {
+          dot(ctx, x + ux * w * s1 + nx * w * o1, y + uy * w * s1 + ny * w * o1, w * 0.2, col, 0.95);
+        }
+      }
+      return undefined;
+    }
+    case 'hearts': {
+      pencilLine(ctx, ax, ay, bx, by, col, w * 0.45, seed);
+      const n = Math.max(2, Math.round(L / (w * 3)));
+      for (let i = 0; i < n; i++) { const [x, y] = at((i + 0.5) / n); heart(ctx, x, y, w * 0.75, col, 0.95); }
+      return undefined;
+    }
+    case 'vine': {
+      const n = 12, pts = [];
+      for (let i = 0; i <= n; i++) pts.push([i / n, Math.sin(i / n * Math.PI * 2) * w * 0.35]);
+      strokePath(ctx, shaped(ax, ay, bx, by, pts), col, w * 0.8, seed);
+      const ang = Math.atan2(uy, ux), k = Math.max(2, Math.round(L / (w * 3.2)));
+      for (let i = 0; i < k; i++) {
+        const side = i % 2 ? 1 : -1, [x, y] = at((i + 0.5) / k);
+        leaf(ctx, x, y, w * 1.5, ang + side * 0.9, blend(col, night ? '#FFFFFF' : '#2E6B3A', 0.25));
+      }
+      return undefined;
+    }
+    case 'scales': {
+      // Little arches along one side, like fish scales.
+      pencilLine(ctx, ax, ay, bx, by, col, w * 0.6, seed);
+      const n = Math.max(2, Math.round(L / (w * 1.9))), ang = Math.atan2(uy, ux);
+      ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = w * 0.42; ctx.globalAlpha = 0.9; ctx.lineCap = 'round';
+      for (let i = 0; i < n; i++) {
+        const [x, y] = at((i + 0.5) / n, w * 0.1), r = L / n / 2;
+        ctx.beginPath(); ctx.arc(x, y, r, ang, ang + Math.PI); ctx.stroke();
+      }
+      ctx.restore();
+      return undefined;
+    }
+    case 'gingham': {
+      // Checks: the pencil colour with light squares across it.
+      pencilLine(ctx, ax, ay, bx, by, col, w * 1.1, seed);
+      const n = Math.max(3, Math.round(L / (w * 1.3))), light = blend(col, night ? '#1E1B18' : '#FFFFFF', 0.6);
+      ctx.save(); ctx.strokeStyle = light; ctx.lineWidth = w * 0.42; ctx.lineCap = 'butt'; ctx.globalAlpha = 0.85; ctx.beginPath();
+      for (let i = 0; i < n; i += 2) { const [x0, y0] = at(i / n), [x1, y1] = at((i + 1) / n); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); }
+      ctx.stroke(); ctx.restore();
+      return undefined;
+    }
+    case 'pastel': case 'candycane': {
+      // Stripes: pastel colours (starting with the pencil's own), or the pencil colour with white stripes.
+      pencilLine(ctx, ax, ay, bx, by, col, w, seed);
+      const n = Math.max(3, Math.round(L / (w * 1.4)));
+      const cols = fx === 'pastel' ? [col, ...(night ? PASTEL_NIGHT : PASTEL_DAY)] : [night ? '#F4EEE6' : '#FFFFFF'];
+      ctx.save(); ctx.lineWidth = w * 0.62; ctx.lineCap = 'round'; ctx.globalAlpha = 0.92;
+      for (let i = fx === 'pastel' ? 0 : 1; i < n; i += 2) {
+        const [x0, y0] = at((i + 0.15) / n, -w * 0.25), [x1, y1] = at((i + 0.85) / n, w * 0.25);
+        ctx.strokeStyle = cols[(i / 2 | 0) % cols.length]; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      }
+      ctx.restore();
+      return undefined;
+    }
+    case 'highlight': {
+      // A soft wide highlighter band under a thin line.
+      ctx.save(); ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.globalAlpha = night ? 0.3 : 0.26; ctx.lineWidth = w * 2.4;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.restore();
+      return pencilLine(ctx, ax, ay, bx, by, col, w * 0.7, seed);
+    }
+    case 'holly': {
+      pencilLine(ctx, ax, ay, bx, by, col, w * 0.6, seed);
+      const ang = Math.atan2(uy, ux), k = Math.max(1, Math.round(L / (w * 4.5)));
+      for (let i = 0; i < k; i++) {
+        const [x, y] = at((i + 0.5) / k);
+        leaf(ctx, x, y, w * 1.7, ang - 0.6, col); leaf(ctx, x, y, w * 1.7, ang + Math.PI + 0.6, col);
+        dot(ctx, x, y, w * 0.38, night ? '#FF7A7A' : '#C8283A'); dot(ctx, x + ux * w * 0.5 + nx * w * 0.4, y + uy * w * 0.5 + ny * w * 0.4, w * 0.32, night ? '#FF7A7A' : '#C8283A');
+      }
+      return undefined;
+    }
+    case 'lights': {
+      // A string of fairy lights: a thin wire in the pencil colour, bulbs that glow in turn.
+      pencilLine(ctx, ax, ay, bx, by, col, w * 0.55, seed);
+      const n = Math.max(2, Math.round(L / (w * 2.8)));
+      for (let i = 0; i < n; i++) {
+        const k = (seed + i) % 4, glow = t == null ? 0.8 : (Math.sin(clock / 380 + k * 1.6 + i) + 1) / 2;
+        const [x, y] = at((i + 0.5) / n, (i % 2 ? 1 : -1) * w * 0.45), c = BULBS[k];
+        dot(ctx, x, y, w * (0.7 + 0.35 * glow), c, 0.12 + 0.2 * glow);
+        dot(ctx, x, y, w * 0.4, c, 0.6 + 0.4 * glow);
+      }
+      return undefined;
     }
     default:
       return pencilLine(ctx, ax, ay, bx, by, col, w, seed);

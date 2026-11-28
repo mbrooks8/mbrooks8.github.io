@@ -3,7 +3,7 @@ import { DAY, NIGHT, setPaper, pencilColor, paperTexture, drawBox, rgba, drawRin
 import { icon } from './icons.js';
 import { store } from './store.js';
 import { backgroundById } from './cosmetics.js';
-import { motifTile, motifCorner } from './stationery.js';
+import { motifTile, motifCorner, motifMotion, tileSize } from './stationery.js';
 import { play as playSound, applyVolumes } from './sound.js';
 
 export const theme = { night: false, pal: DAY, accent: pencilColor(0, false) };
@@ -30,9 +30,19 @@ export function applyTheme() {
   root.style.setProperty('--paperImg', `url(${paperTexture(theme.night)})`);
   root.style.setProperty('--motifTile', motifTile(bg.motif, theme.night));
   root.style.setProperty('--motifCorner', motifCorner(bg.motif, theme.night));
+  root.style.setProperty('--motifSize', tileSize(bg.motif) + 'px');
+  paperMotion(motifMotion(bg.motif, theme.night));
   const meta = document.querySelector('meta[name=theme-color]');
   if (meta) meta.setAttribute('content', p.paper);
   redrawBoxes();
+}
+/** The moving layer of a moving paper: one fixed element behind everything, moved by CSS (see style.css .paperfx). */
+function paperMotion(m) {
+  let fx = document.getElementById('paperfx');
+  if (!m) { if (fx) fx.remove(); return; }
+  if (!fx) { fx = document.createElement('div'); fx.id = 'paperfx'; fx.setAttribute('aria-hidden', 'true'); document.body.prepend(fx); }
+  fx.className = 'paperfx fx-' + m.kind;
+  fx.style.setProperty('--fxImg', m.image);
 }
 if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', () => { if (store.theme === 'system') { applyTheme(); onThemeChange.forEach(f => f()); } });
 export const onThemeChange = new Set();
