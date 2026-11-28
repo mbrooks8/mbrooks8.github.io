@@ -461,9 +461,9 @@ export function createPlay(ctx) {
     }));
   };
 
-  let mpEarned = 0, mpTl = null;
-  const mpSolved = (g, showMs = 1300, earned = 0, tl = null) => {
-    mpEarned = earned;
+  let mpEarned = 0, mpTl = null, mpRepeat = false;
+  const mpSolved = (g, showMs = 1300, earned = 0, tl = null, repeat = false) => {
+    mpEarned = earned; mpRepeat = repeat;
     mpTl = tl;
     const r = room;
     if (mpMode === Mode.VERSUS) {
@@ -499,6 +499,7 @@ export function createPlay(ctx) {
       const hints = g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`;
       kids.push(text(`Time ${formatTime(g.elapsedMs)} · ${hints}`, { size: 18, cls: 'center' }));
       if (mpEarned) kids.push(text(`+${mpEarned} point${mpEarned === 1 ? '' : 's'}`, { size: 15, color: 'inkSoft', cls: 'center' }));
+      else if (mpRepeat) kids.push(text('Already solved, so no points', { size: 15, color: 'inkSoft', cls: 'center' }));
       kids.push(el('div', { class: 'plist center' }, ...players.map(p => {
         let n = 0; for (let e = 0; e < g.grid.edgeCount; e++) if (g.marks[e] === Edge.LINE && g.owner[e] === p) n++;
         return dotLine(p, `${nameOf(p)}: ${n} piece${n === 1 ? '' : 's'}`);
@@ -512,6 +513,7 @@ export function createPlay(ctx) {
       h.style.color = winner != null ? colorOf(winner) : theme.accent;
       kids.push(h);
       if (mpEarned) kids.push(text(`+${mpEarned} point${mpEarned === 1 ? '' : 's'}`, { size: 15, color: 'inkSoft', cls: 'center' }));
+      else if (mpRepeat) kids.push(text('Already solved, so no points', { size: 15, color: 'inkSoft', cls: 'center' }));
       const rank = p => { const f = finished.get(p); return f ? (f[2] > 0 ? f[2] : 99) : 100; };
       const order = players.slice().sort((a, b) => rank(a) - rank(b) || (progress.get(b) || 0) - (progress.get(a) || 0));
       kids.push(el('div', { class: 'plist' }, ...order.map(p => {

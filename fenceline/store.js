@@ -23,6 +23,8 @@ export function today() { return dayString(new Date()); }
 export function yesterday() { const d = new Date(); d.setDate(d.getDate() - 1); return dayString(d); }
 
 export const HISTORY_MAX = 200;
+/** How many paid puzzles are remembered (about 20 bytes each); the oldest are forgotten first. */
+export const PAID_MAX = 500;
 const DIFFS = ['EASY', 'MEDIUM', 'HARD'];
 
 let memInstallId = null;
@@ -97,6 +99,15 @@ export const store = {
   get points() { return int('points', 0); },
   addPoints(n) { set('points', this.points + Math.max(0, Math.round(n))); return this.points; },
 
+  /** Puzzles already paid for (their share codes, oldest first). A puzzle pays once per device, so replays never earn again. */
+  get paid() { return (get('paid', '') || '').split(' ').filter(Boolean); },
+  isPaid(code) { return !!code && this.paid.includes(String(code)); },
+  markPaid(code) {
+    if (!code) return;
+    const rest = this.paid.filter(c => c !== String(code));
+    set('paid', [...rest, String(code)].slice(-PAID_MAX).join(' '));
+  },
+
   // The store (cosmetics.js). `points` only ever goes up (it is the leaderboard total); what is spent is kept apart.
   get spent() { return int('spent', 0); },
   /** Points to spend. */
@@ -116,10 +127,12 @@ export const store = {
   set background(v) { set('background', v); },
 
   /** Records a win; returns true when it is a new best time. */
-  recordWin(size, d, ms, hints, daily) {
-    set('solved_' + d, this.solved(d) + 1);
-    set('time_' + d, this.totalTime(d) + ms);
-    if (hints === 0) set('noHintWins', this.noHintWins + 1);
+  recordWin(size, d, ms, hints, daily, repeat = false) {
+    if (!repeat) { // a puzzle solved before does not count again (its best time and the daily streak still can)
+      set('solved_' + d, this.solved(d) + 1);
+      set('time_' + d, this.totalTime(d) + ms);
+      if (hints === 0) set('noHintWins', this.noHintWins + 1);
+    }
     const prev = this.best(size, d);
     const isBest = hints === 0 && (prev === 0 || ms < prev);
     if (isBest) set(`best_${size}_${d}`, ms);

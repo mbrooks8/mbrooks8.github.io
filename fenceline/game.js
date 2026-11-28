@@ -453,18 +453,21 @@ export function showGame(opts) {
     const tlEntry = tl ? { code: code.toString(), tl, ms: g.elapsedMs } : null;
     if (mode === 'mp') { // Play together: versus gives every finisher the puzzle's points; co-op, everyone who drew part of the loop
       let got = 0;
-      if (!alreadyDone) { board.buzz(40); got = mpPoints(g); store.addPoints(got); }
-      mp.mpSolved(g, showMs, got, tlEntry);
+      const repeat = !alreadyDone && store.isPaid(code); // same board paid for before: nothing again
+      if (!alreadyDone) { board.buzz(40); got = repeat ? 0 : mpPoints(g); store.addPoints(got); if (got > 0) store.markPaid(code); }
+      mp.mpSolved(g, showMs, got, tlEntry, repeat);
       return;
     }
     if (!alreadyDone && mode !== 'tutorial') ads.noteWin();
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
-    const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, daily) : false;
-    const earned = !alreadyDone && mode !== 'tutorial' ? recordScores(p, g.elapsedMs, g.hintsUsed, daily) : 0;
+    const repeat = !alreadyDone && mode !== 'tutorial' && store.isPaid(code); // solved on this device before: no points, no count
+    const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, daily, repeat) : false;
+    const earned = !alreadyDone && mode !== 'tutorial' ? recordScores(p, g.elapsedMs, g.hintsUsed, daily, repeat) : 0;
+    if (!alreadyDone && mode !== 'tutorial') store.markPaid(code);
     store.savedGame = null;
     if (!alreadyDone) board.buzz(40);
-    setTimeout(() => { if (!disposed) showWin(g, best, earned, tlEntry); }, showMs);
+    setTimeout(() => { if (!disposed) showWin(g, best, earned, tlEntry, repeat); }, showMs);
   };
 
   /** Keeps this game's timelapse (co-op: with everyone's pencil and name); returns its id for the history. */
@@ -481,7 +484,7 @@ export function showGame(opts) {
   };
 
   /** The win card: a taped card at the bottom, so the shaded loop stays in view above it. */
-  const showWin = (g, newBest, earned = 0, tlEntry = null) => {
+  const showWin = (g, newBest, earned = 0, tlEntry = null, repeat = false) => {
     let d;
     const cheers = ['Lovely loop!', 'Neatly fenced!', 'All closed up!', 'Beautifully done!', "That's the one!"];
     const seed = g.puzzle.seed == null ? 0n : BigInt(g.puzzle.seed);
@@ -491,6 +494,7 @@ export function showGame(opts) {
     if (mode === 'daily' && isTodaysDaily(g.puzzle)) line.append(' · ', icon('candle', 16, 'var(--hint)'), String(store.dailyStreak));
     kids.push(line);
     if (earned > 0) kids.push(text(`+${earned.toLocaleString('en-US')} points`, { size: 16, color: 'inkSoft', cls: 'center' }));
+    else if (repeat) kids.push(text('Already solved, so no points', { size: 15, color: 'inkSoft', cls: 'center' }));
     if (newBest) kids.push(text('★ New best! ★', { size: 17, bold: true, color: 'hint', cls: 'center' }));
     const links = [];
     if (mode === 'tutorial') {

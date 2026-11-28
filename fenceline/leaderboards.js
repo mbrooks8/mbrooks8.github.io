@@ -4,15 +4,16 @@ import { winPoints, scoresForWin, BOARDS } from './points.js';
 import { gamesOn, gamesSubmit, gamesShow } from './native.js';
 
 /** Call right after store.recordWin: adds the points and sends the scores. Returns the points earned. */
-export function recordScores(puzzle, ms, hints, daily) {
+export function recordScores(puzzle, ms, hints, daily, repeat = false) {
   const difficulty = puzzle.difficulty || 'EASY';
-  const earned = winPoints({ cells: puzzle.width * puzzle.height, difficulty, hints, daily });
+  const earned = repeat ? 0 : winPoints({ cells: puzzle.width * puzzle.height, difficulty, hints, daily });
   store.addPoints(earned);
   if (gamesOn()) {
-    const scores = scoresForWin({
+    let scores = scoresForWin({
       difficulty, ms, hints, daily,
       totals: { points: store.points, solved: store.solved(difficulty), streak: store.bestStreak },
     });
+    if (repeat) scores = scores.filter(s => s.key !== 'points' && !s.key.startsWith('solved_')); // totals did not change
     for (const s of scores) gamesSubmit(s.key, s.score);
   }
   return earned;
