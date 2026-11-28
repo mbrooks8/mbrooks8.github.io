@@ -14,7 +14,7 @@ import { statsDialog, settingsDialog, joinDialog, codeDialog, playTogetherDialog
 import { learnDialog } from './learn.js';
 import { shopDialog } from './shop.js';
 import { showGame } from './game.js';
-import { offerApp } from './openapp.js';
+import { offerApp, tryApp } from './openapp.js';
 
 const app = document.getElementById('app');
 
@@ -141,8 +141,8 @@ function boot() {
   if (hasLink) {
     // Keep the address clean, so a reload or a home-screen launch opens the menu.
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
-    // Android Chrome: the link did not open the app by itself, so offer it.
-    if (params.has('p') || params.has('join')) offerApp(startUrl);
+    // Android: the link did not open the app by itself, so try it once and offer it.
+    if (params.has('p') || params.has('join')) { offerApp(startUrl); tryApp(startUrl); }
   }
   showMenu();
   if (!(hasLink && openLinkUrl(startUrl)) && !store.seenIntro) {
