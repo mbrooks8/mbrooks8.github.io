@@ -3,7 +3,7 @@
 // Kept light on purpose: a few strokes per piece, no blur, and the board only redraws about 18 times a second for them.
 import { pencilLine, rng, blend } from './sketch.js';
 
-const ANIMATED = new Set(['sparkle', 'ember', 'confetti', 'aurora', 'rainbow', 'lights']);
+const ANIMATED = new Set(['sparkle', 'ember', 'confetti', 'aurora', 'rainbow', 'lights', 'heartbeat', 'petals', 'comet', 'opal']);
 /** Does this look move? (The board only keeps redrawing while a moving line is on it.) */
 export const isAnimated = fx => ANIMATED.has(fx);
 
@@ -22,6 +22,12 @@ function heart(ctx, x, y, r, col, alpha = 1) {
 }
 
 /** A leaf (or petal) along angle [ang]. */
+/** A blossom petal: a small turned oval. */
+function petal(ctx, x, y, r, col, alpha, turn) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = col; ctx.translate(x, y); ctx.rotate(turn);
+  ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.55, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+}
+
 function leaf(ctx, x, y, len, ang, col, alpha = 0.9) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.globalAlpha = alpha; ctx.fillStyle = col; ctx.beginPath();
   ctx.moveTo(0, 0); ctx.quadraticCurveTo(len * 0.5, -len * 0.45, len, 0); ctx.quadraticCurveTo(len * 0.5, len * 0.45, 0, 0);
@@ -137,14 +143,47 @@ export function drawFx(ctx, fx, ax, ay, bx, by, col, w, seed, t, accent = '#FFFF
       for (let k = 0; k < 3; k++) { const [x, y] = at(0.2 + 0.3 * k, (k % 2 ? 1 : -1) * w * 0.75); dot(ctx, x, y, w * 0.3, CONFETTI[(k + step) % 5]); }
       return undefined;
     }
-    case 'rainbow': case 'aurora': {
+    // Premium looks (gems): little hearts that beat, petals drifting off, a comet running along, pearly colours.
+    case 'heartbeat': {
+      pencilLine(ctx, ax, ay, bx, by, col, w * 0.85, seed);
+      for (let k = 0; k < 2; k++) {
+        const s = t == null ? 0.6 : (Math.sin(clock / 380 + seed * 1.3 + k * 2.1) + 1) / 2;
+        const [x, y] = at(0.3 + 0.4 * k, (k ? 1 : -1) * w * 0.75);
+        heart(ctx, x, y, w * (0.5 + 0.3 * s), accent, 0.7 + 0.3 * s);
+      }
+      return undefined;
+    }
+    case 'petals': {
+      pencilLine(ctx, ax, ay, bx, by, col, w, seed);
+      for (let k = 0; k < 2; k++) {
+        const f = t == null ? 0.25 + 0.35 * k : ((clock / 1700 + (seed % 5) * 0.2 + k * 0.5) % 1);
+        const [x, y] = at(0.25 + 0.5 * k + f * 0.12, (k ? 1 : -1) * w * (0.5 + f * 1.7));
+        petal(ctx, x, y, w * 0.45, accent, 0.95 * (1 - f * 0.8), f * 4 + seed + k);
+      }
+      return undefined;
+    }
+    case 'comet': {
+      pencilLine(ctx, ax, ay, bx, by, col, w, seed);
+      const p = t == null ? 0.65 : ((clock / 1100 + seed * 0.37) % 1), q = Math.max(0, p - 0.3);
+      const [hx, hy] = at(p), [tx, ty] = at(q);
+      const g = ctx.createLinearGradient(tx, ty, hx, hy);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, accent);
+      ctx.save(); ctx.strokeStyle = g; ctx.lineCap = 'round'; ctx.lineWidth = w * 0.55; ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(hx, hy); ctx.stroke(); ctx.restore();
+      star(ctx, hx, hy, w * 0.6, accent, 0.95);
+      return undefined;
+    }
+    case 'rainbow': case 'aurora': case 'opal': {
       const hue = (x, y) => {
         const phase = (x + y) * 0.7;
-        return fx === 'rainbow' ? (clock / 14 + phase) % 360 : 165 + 70 * Math.sin(phase * 0.017 + clock / 1800);
+        if (fx === 'rainbow') return (clock / 14 + phase) % 360;
+        if (fx === 'opal') return 250 + 75 * Math.sin(phase * 0.02 + clock / 1500);
+        return 165 + 70 * Math.sin(phase * 0.017 + clock / 1800);
       };
-      const l = fx === 'rainbow' ? (night ? 70 : 54) : (night ? 66 : 42);
+      const l = fx === 'rainbow' ? (night ? 70 : 54) : fx === 'opal' ? (night ? 76 : 52) : (night ? 66 : 42);
+      const sat = fx === 'opal' ? 55 : 80;
       const g = ctx.createLinearGradient(ax, ay, bx, by);
-      g.addColorStop(0, `hsl(${hue(ax, ay)} 80% ${l}%)`); g.addColorStop(1, `hsl(${hue(bx, by)} 80% ${l}%)`);
+      g.addColorStop(0, `hsl(${hue(ax, ay)} ${sat}% ${l}%)`); g.addColorStop(1, `hsl(${hue(bx, by)} ${sat}% ${l}%)`);
       return pencilLine(ctx, ax, ay, bx, by, g, w, seed);
     }
     case 'paws': {

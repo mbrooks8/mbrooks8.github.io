@@ -1,5 +1,6 @@
 // The store's goods: paper (backgrounds), ping emoji and pencils, and what they cost in points.
-// Pure data and small functions, no screens. Points are spent, never bought with money.
+// Pure data and small functions, no screens. Points are earned by playing and never bought with money.
+// A few premium goods cost gems instead (bought from Google Play in the Android app only, see gems.js); `premium: true`.
 import { EXTRA_PENCILS } from './pencils.js';
 
 /**
@@ -8,7 +9,10 @@ import { EXTRA_PENCILS } from './pencils.js';
  * a first common item in the first session, a legendary line after many evenings of play (docs/economy.md).
  */
 export const RARITY_PRICE = { common: 30, uncommon: 75, rare: 180, epic: 450, legendary: 1000 };
-const priced = list => list.map(g => ({ ...g, price: g.rarity ? RARITY_PRICE[g.rarity] : 0 }));
+/** Premium goods (`premium: true`): their price in gems, by kind (bought with real money in the Play Store app only; gems.js). */
+export const GEM_PRICE = { pings: 120, background: 200, pencil: 250 };
+const priced = (list, kind) => list.map(g => ({ ...g, currency: g.premium ? 'gems' : 'points',
+  price: g.premium ? GEM_PRICE[kind] : g.rarity ? RARITY_PRICE[g.rarity] : 0 }));
 
 /** Paper: [day] and [night] replace some colours (see sketch.js setPaper). The first one is the plain paper everybody has. */
 export const BACKGROUNDS = priced([
@@ -102,7 +106,14 @@ export const BACKGROUNDS = priced([
   { id: 'snowfall', name: 'Snowfall', rarity: 'legendary', motif: 'snowfall',
     day: { paper: '#EAF0F6', paperShade: '#DCE5EE', card: '#F5F8FB', ruling: 'rgba(111,143,184,0.16)' },
     night: { paper: '#1A2030', paperShade: '#22293B', card: '#272F43', ruling: 'rgba(160,180,220,0.12)' } },
-]);
+  // Premium papers (gems).
+  { id: 'tea', name: 'Teatime', premium: true, motif: 'tea',
+    day: { paper: '#F6ECE2', paperShade: '#EDDDCD', card: '#FCF6F0', ruling: 'rgba(150,100,70,0.15)' },
+    night: { paper: '#2A231F', paperShade: '#342B26', card: '#39302A', ruling: 'rgba(210,170,140,0.12)' } },
+  { id: 'lanterns', name: 'Lanterns', premium: true, motif: 'lanterns',
+    day: { paper: '#F7EDDF', paperShade: '#EFDFCB', card: '#FCF6EE', ruling: 'rgba(190,110,60,0.15)' },
+    night: { paper: '#241E1C', paperShade: '#2E2623', card: '#342B27', ruling: 'rgba(232,160,112,0.11)' } },
+], 'background');
 
 /** Every ping feeling the game can show. Only the key goes over the wire, so a friend sees yours even without the pack. */
 export const PING_PACKS = priced([
@@ -149,16 +160,26 @@ export const PING_PACKS = priced([
   { id: 'pond', name: 'Pond', rarity: 'uncommon', kinds: [{ key: 'duck', glyph: '🦆', word: 'Quack' }, { key: 'turtle', glyph: '🐢', word: 'Slow and steady' }, { key: 'lotus', glyph: '🪷', word: 'Bloom' }, { key: 'minnow', glyph: '🐟', word: 'Swim' }, { key: 'snail', glyph: '🐌', word: 'Take your time' }, { key: 'swan', glyph: '🦢', word: 'Graceful' }] },
   { id: 'moods', name: 'Moods', rarity: 'common', kinds: [{ key: 'sleepy', glyph: '😴', word: 'Sleepy' }, { key: 'cool', glyph: '😎', word: 'Cool' }, { key: 'shy', glyph: '😳', word: 'Eep' }, { key: 'wow', glyph: '🤩', word: 'Wow' }, { key: 'cozy', glyph: '🥰', word: 'Cozy' }, { key: 'determined', glyph: '😤', word: 'Got this' }] },
   { id: 'christmas', name: 'Christmas', rarity: 'rare', kinds: [{ key: 'xmastree', glyph: '🎄', word: 'Merry' }, { key: 'santa', glyph: '🎅', word: 'Ho ho ho' }, { key: 'snowman', glyph: '⛄', word: 'Frosty' }, { key: 'reindeer', glyph: '🦌', word: 'Dash away' }, { key: 'bell', glyph: '🔔', word: 'Jingle' }, { key: 'stocking', glyph: '🧦', word: 'Stuffed' }] },
-]);
+  // Premium packs (gems).
+  { id: 'royal', name: 'Fancy', premium: true, kinds: [
+    { key: 'crown', glyph: '👑', word: 'Royal' }, { key: 'gem', glyph: '💎', word: 'Shiny' },
+    { key: 'tophat', glyph: '🎩', word: 'Fancy' }, { key: 'peacock', glyph: '🦚', word: 'Show-off' },
+    { key: 'rose', glyph: '🌹', word: 'For you' }, { key: 'trophy', glyph: '🏆', word: 'Champion' }] },
+  { id: 'seasons', name: 'Seasons', premium: true, kinds: [
+    { key: 'tulip', glyph: '🌷', word: 'Spring' }, { key: 'melon', glyph: '🍉', word: 'Summer' },
+    { key: 'fallleaf', glyph: '🍂', word: 'Autumn' }, { key: 'skate', glyph: '⛸️', word: 'Glide' },
+    { key: 'pumpkin', glyph: '🎃', word: 'Boo' }, { key: 'fireworks', glyph: '🎆', word: 'New year' }] },
+], 'pings');
 
 /** Pencils: the number is what Play together sends (see room.js EXTRA_PENCIL_BASE). */
-export const PENCIL_GOODS = priced(EXTRA_PENCILS.map((p, i) => ({ id: 'pencil-' + p.name.toLowerCase().replace(/ /g, '-'), pencil: 100 + i, name: p.name, rarity: p.rarity })));
+export const PENCIL_GOODS = priced(EXTRA_PENCILS.map((p, i) => ({ id: 'pencil-' + p.name.toLowerCase().replace(/ /g, '-'), pencil: 100 + i, name: p.name, rarity: p.rarity, premium: !!p.premium })), 'pencil');
 
-/** Everything for sale, as { id, kind: 'background' | 'pings' | 'pencil', name, price }. */
+/** Everything for sale, as { id, kind: 'background' | 'pings' | 'pencil', name, price, currency: 'points' | 'gems' }. */
+const good = (id, kind, g) => ({ id, kind, name: g.name, price: g.price, currency: g.currency, premium: !!g.premium, rarity: g.rarity });
 export const GOODS = [
-  ...BACKGROUNDS.filter(b => b.price > 0).map(b => ({ id: 'bg-' + b.id, kind: 'background', name: b.name, price: b.price, rarity: b.rarity })),
-  ...PING_PACKS.filter(p => p.price > 0).map(p => ({ id: 'pings-' + p.id, kind: 'pings', name: p.name, price: p.price, rarity: p.rarity })),
-  ...PENCIL_GOODS.map(p => ({ id: p.id, kind: 'pencil', name: p.name, price: p.price, rarity: p.rarity })),
+  ...BACKGROUNDS.filter(b => b.price > 0).map(b => good('bg-' + b.id, 'background', b)),
+  ...PING_PACKS.filter(p => p.price > 0).map(p => good('pings-' + p.id, 'pings', p)),
+  ...PENCIL_GOODS.map(p => good(p.id, 'pencil', p)),
 ];
 
 export const goodById = id => GOODS.find(g => g.id === id) || null;
@@ -170,7 +191,7 @@ export function parseOwned(s) {
   return out;
 }
 
-/** What buying [id] does: { ok, why } given [balance] points and the [owned] ids. */
+/** What buying [id] does: { ok, why } given [balance] (points, or gems for a premium good) and the [owned] ids. */
 export function canBuy(id, balance, owned) {
   const g = goodById(id);
   if (!g) return { ok: false, why: 'unknown' };

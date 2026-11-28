@@ -51,6 +51,11 @@ export const EXTRA_PENCILS = [
   { name: 'Candy cane', day: '#C8283A', night: '#FF7F8A', style: 'solid', fx: 'candycane', rarity: 'rare' },
   { name: 'Holly', day: '#2F7A45', night: '#86D69C', style: 'solid', fx: 'holly', rarity: 'rare' },
   { name: 'Fairy lights', day: '#3B5A3A', night: '#B6D6A8', style: 'solid', fx: 'lights', rarity: 'epic' },
+  // Premium pencils, bought with gems (Android app only, see gems.js). `premium` instead of a rarity; anyone can still see them in Play together.
+  { name: 'Heartbeat', day: '#B8325C', night: '#F590AE', style: 'solid', fx: 'heartbeat', accent: '#F06C93', premium: true },
+  { name: 'Sakura', day: '#B5577E', night: '#F4B3CB', style: 'solid', fx: 'petals', accent: '#F7A8C4', premium: true },
+  { name: 'Comet', day: '#2C4C9E', night: '#9DB8FF', style: 'solid', fx: 'comet', accent: '#F2B33D', premium: true },
+  { name: 'Opal', day: '#6E72B8', night: '#C9CCF5', style: 'solid', fx: 'opal', premium: true },
 ];
 
 /** The store pencil for a wire number, or null (a number from a newer app, or a plain pencil). */

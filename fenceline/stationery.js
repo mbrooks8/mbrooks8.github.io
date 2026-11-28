@@ -90,6 +90,16 @@ export const MOTIFS = {
     tile: [['petal', 20, 20, 0.9, 30], ['petal', 130, 30, 0.7, -40], ['blossom', 80, 100, 0.9, 0], ['petal', 200, 90, 0.8, 120], ['petal', 30, 170, 0.8, 200], ['petal', 150, 180, 0.9, 80], ['petal', 100, 210, 0.6, 10]],
     day: ['#C86E88', '#F8CCD8'], night: ['#EEA9BE', '#5E3D49'],
   },
+  // Premium papers (gems).
+  tea: {
+    tile: [['teacup', 20, 24, 1.2, -6], ['cookie', 150, 20, 0.9, 0], ['heart', 100, 112, 0.7, 0], ['teacup', 180, 140, 1, 8], ['twinkle', 30, 170, 0.8, 0], ['cookie', 150, 200, 0.8, 10]],
+    day: ['#9A6A4E', '#EBCDB6'], night: ['#D8B29A', '#5A4234'],
+  },
+  lanterns: {
+    anim: 'glow',
+    tile: [['lantern', 20, 24, 1.1, -4], ['twinkle', 140, 20, 0.7, 0], ['lantern', 96, 110, 1.3, 6], ['twinkle', 200, 120, 0.6, 0], ['lantern', 34, 176, 0.9, 8], ['lantern', 170, 192, 1.1, -6]],
+    day: ['#B8603A', '#F6D29A'], night: ['#E8A070', '#6A4630'],
+  },
   snowfall: {
     anim: 'fall',
     tile: [['snowflake', 20, 20, 0.9, 0], ['snowflake', 130, 40, 0.6, 20], ['snowflake', 80, 110, 0.8, 10], ['snowflake', 200, 100, 0.7, 0], ['snowflake', 30, 180, 0.7, 30], ['snowflake', 160, 190, 0.9, 15], ['snowflake', 110, 220, 0.5, 0]],

@@ -15,6 +15,7 @@ import { SHARE_BASE, shareText, defaultName, GROUP_SIZES, diffLabel, cap, factor
 import { shapeChip } from './shapes.js';
 import { thumb } from './thumb.js';
 import { shopDialog } from './shop.js';
+import { canRemoveAds } from './gems.js';
 import { wardrobeDialog } from './wardrobe.js';
 import { leaderboardsOn, showLeaderboards, watchGamesStatus } from './leaderboards.js';
 import { openGame } from './app.js';
@@ -85,6 +86,8 @@ export function settingsDialog(onDone) {
       el('div', { class: 'gap12 center' }, button('Wardrobe', () => wardrobeDialog(build), { size: 17, kind: 'link' }), button('Store', () => shopDialog(build), { size: 17, kind: 'link' })),
       // EU/UK players can change their ad consent (production app only; Google says when it's needed).
       ...(privacyChoicesNeeded() ? [el('div', { class: 'gap12 center' }, button('Privacy choices', () => { d.close(); privacyChoices(); }, { size: 17, kind: 'link' }))] : []),
+      // Play Store app only, once Play sells it: opens the store's Gems tab.
+      ...(canRemoveAds() ? [el('div', { class: 'gap12 center' }, button('Remove ads', () => shopDialog(build, 'gems'), { size: 17, kind: 'link' }))] : []),
       ...(isApp ? [] : [el('p', { class: 'about gap16' },
         'Playing on Android? ', el('a', { href: './Fenceline.apk', download: '' }, 'Download the app'), '.')]),
     );

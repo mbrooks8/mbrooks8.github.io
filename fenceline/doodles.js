@@ -88,6 +88,10 @@ export const D = {
     `<path d="M12 8 L12 20.5 M12 8 Q8 3 7.4 6.4 Q8 8 12 8 Q16 8 16.6 6.4 Q16 3 12 8" stroke="${s}" fill="none"/>`,
   firefly: (s, f) => `<circle cx="12" cy="15" r="5.4" fill="${f}" stroke="none"/><ellipse cx="12" cy="13" rx="2" ry="3.6" fill="${f}" stroke="${s}"/>` +
     `<path d="M10.4 11 Q5.6 6.6 7.4 5 Q10 4.6 11.4 10 M13.6 11 Q18.4 6.6 16.6 5 Q14 4.6 12.6 10 M11 9.6 L10 7.4 M13 9.6 L14 7.4" stroke="${s}" fill="none"/>`,
+  teacup: (s, f) => `<path d="M5 9 L17 9 Q17 17 11 17 Q5 17 5 9 Z" fill="${f}" stroke="${s}"/><path d="M17 10.5 Q21 10.5 20 13.5 Q19 15.5 16 15" stroke="${s}" fill="none"/>` +
+    `<path d="M3.5 19 L18.5 19 M9 6.5 Q8 4.5 9.5 3 M13 6.5 Q12 4.5 13.5 3" stroke="${s}" fill="none"/>`,
+  lantern: (s, f) => `<path d="M8.5 5.5 Q4 12 8.5 18.5 L15.5 18.5 Q20 12 15.5 5.5 Z" fill="${f}" stroke="${s}"/>` +
+    `<path d="M10 3 L14 3 M12 3 L12 5.5 M8.5 5.5 L15.5 5.5 M12 5.5 Q9.6 12 12 18.5 M12 18.5 L12 21.5" stroke="${s}" fill="none"/>`,
   lilypad: (s, f) => `<path d="M12 12 L17.6 6.4 A8 8 0 1 1 12 4 Z" fill="${f}" stroke="${s}"/><path d="M12 12 L5 12.4 M12 12 L9 19 M12 12 L17.4 17" stroke="${s}"/>`,
 };
 
@@ -155,4 +159,11 @@ export const CORNER = {
     `<circle cx="44.5" cy="26" r="1.1" fill="${s}"/><circle cx="51.5" cy="26" r="1.1" fill="${s}"/><path d="M48 29 L56 30.5 L48 31.5 Z" fill="${s}"/>` +
     `<path d="M39 36 Q48 40 57 36 M54 38 L58 46 M40 18 L56 18 M43 18 L43 8 L53 8 L53 18 M34 46 L22 38 M62 46 L74 38" stroke="${s}" fill="none"/>` +
     `<circle cx="48" cy="46" r="1.2" fill="${s}"/><circle cx="48" cy="53" r="1.2" fill="${s}"/>`,
+  // Premium papers (gems). A teapot with a cup beside it.
+  tea: (s, f) => `<path d="M26 60 Q22 36 44 34 Q66 36 62 60 Z" fill="${f}" stroke="${s}"/><path d="M33 34 Q44 26 55 34" fill="${f}" stroke="${s}"/>` +
+    `<circle cx="44" cy="26" r="2.6" fill="${f}" stroke="${s}"/><path d="M27 46 Q16 42 12 30 Q20 34 28 40" fill="${f}" stroke="${s}"/>` +
+    `<path d="M61 40 Q72 42 68 52 Q66 56 61 56 M18 62 L70 62 M44 20 Q41 15 44 10 Q47 6 44 2" stroke="${s}" fill="none"/>` + place([['teacup', 68, 40, 1, 0]], s, f),
+  // Paper lanterns on a string.
+  lanterns: (s, f) => `<path d="M0 6 Q48 30 96 6" stroke="${s}" fill="none"/>` +
+    place([['lantern', 10, 10, 1.1, 0], ['lantern', 36, 16, 1.4, 0], ['lantern', 66, 12, 1.2, 0]], s, f),
 };

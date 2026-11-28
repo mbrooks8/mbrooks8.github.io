@@ -25,6 +25,8 @@ export function yesterday() { const d = new Date(); d.setDate(d.getDate() - 1); 
 export const HISTORY_MAX = 200;
 /** How many paid puzzles are remembered (about 20 bytes each); the oldest are forgotten first. */
 export const PAID_MAX = 500;
+/** How many gem purchases are remembered (to never count one twice). */
+export const GEM_TOKENS_MAX = 200;
 const DIFFS = ['EASY', 'MEDIUM', 'HARD'];
 
 let memInstallId = null;
@@ -114,12 +116,28 @@ export const store = {
   get balance() { return Math.max(0, this.points - this.spent); },
   /** Ids of the goods bought, in the order bought. */
   get owned() { return parseOwned(get('owned', '')); },
-  /** Buys a good with points. Returns true when bought. */
+  /** Buys a good with points (or gems, for a premium good). Returns true when bought. */
   buy(id) {
-    const owned = this.owned;
-    if (!canBuy(id, this.balance, owned).ok) return false;
-    set('spent', this.spent + goodById(id).price);
+    const owned = this.owned, g = goodById(id);
+    const gems = g && g.currency === 'gems';
+    if (!canBuy(id, gems ? this.gems : this.balance, owned).ok) return false;
+    if (gems) set('gemsSpent', int('gemsSpent', 0) + g.price);
+    else set('spent', this.spent + g.price);
     set('owned', [...owned, id].join(','));
+    return true;
+  },
+
+  // Gems (gems.js): bought from Google Play in the Android app only. Kept on this phone, like points.
+  /** Gems to spend. */
+  get gems() { return Math.max(0, int('gemsGot', 0) - int('gemsSpent', 0)); },
+  /** Play purchase tokens already turned into gems, so a purchase Play sends twice only counts once. */
+  get gemTokens() { return (get('gemTokens', '') || '').split(' ').filter(Boolean); },
+  /** Adds [n] gems for Play purchase [token]. Returns false when that purchase was already counted. */
+  grantGems(token, n) {
+    token = String(token || '');
+    if (!token || /\s/.test(token) || !(n > 0) || this.gemTokens.includes(token)) return false;
+    set('gemsGot', int('gemsGot', 0) + Math.round(n));
+    set('gemTokens', [...this.gemTokens, token].slice(-GEM_TOKENS_MAX).join(' '));
     return true;
   },
   /** The paper in use (an id from cosmetics.js BACKGROUNDS; the plain 'cream' if it is not owned). */
