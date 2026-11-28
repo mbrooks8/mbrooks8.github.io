@@ -8,6 +8,7 @@ import { icon } from './icons.js';
 import { BoardView } from './board.js';
 import { Mode } from './room.js';
 import { play } from './sound.js';
+import { PING_KINDS, pingGlyph } from './pings.js';
 import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, JOIN_BASE, factory, isAndroid, keepAwake } from './common.js';
 import { createPlay } from './play.js';
 import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
@@ -37,7 +38,8 @@ export function showGame(opts) {
   const noteText = el('span');
   note.append(noteText);
   note.addEventListener('click', () => { if (mode !== 'tutorial') setNote(''); });
-  const setNote = s => { noteText.textContent = s; note.hidden = !s; };
+  // Notes float over the top of the board so a ping or hint never pushes the board down (lessons keep theirs in the flow).
+  const setNote = s => { noteText.textContent = s; note.classList.toggle('float', mode !== 'tutorial'); note.hidden = !s; };
   const canvas = el('canvas', { class: 'board', 'aria-label': 'Puzzle board' });
   const loading = el('div', { class: 'loading', text: 'sharpening pencils…' });
   const boardFrame = el('div', { class: 'boardframe' }, canvas, loading);
@@ -64,13 +66,38 @@ export function showGame(opts) {
   // Co-op: Ping, then tap anywhere on the board to point everyone at that spot.
   const pingBtn = tool('ping', 'Ping', 'Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap anywhere to show everyone.'); });
   pingBtn.hidden = true;
-  const bar = el('div', { class: 'bottombar tools' }, undoBtn, redoBtn, pingBtn, penBtn);
+  // Press and hold Ping: a small sticky note of feelings. The pick stays until changed; the button shows it.
+  let pickerOpen = false, held = false, holdTimer = 0;
+  const picker = el('div', { class: 'pingpicker', hidden: true });
+  const setKind = key => {
+    board.pingKind = key;
+    const g = pingGlyph(key), ring = pingBtn.querySelector('.ring');
+    const old = ring.querySelector('svg, .glyph');
+    old.replaceWith(g ? el('span', { class: 'glyph', text: g }) : icon('ping', 28));
+    pingBtn.setAttribute('aria-label', g ? 'Ping ' + (PING_KINDS.find(k => k.key === key).word) : 'Ping');
+  };
+  const closePicker = () => { pickerOpen = false; picker.hidden = true; };
+  const pickBtn = (key, glyph, word) => el('button', {
+    type: 'button', class: 'pick' + (board.pingKind === key ? ' sel' : ''), 'aria-label': word,
+    onclick: () => { setKind(key); closePicker(); board.pingArmed = true; refresh(); setNote('Tap anywhere to show everyone.'); },
+  }, glyph ? el('span', { class: 'glyph', text: glyph }) : icon('ping', 26));
+  const openPicker = () => {
+    picker.replaceChildren(pickBtn('', '', 'Plain ping'), ...PING_KINDS.map(k => pickBtn(k.key, k.glyph, k.word)));
+    picker.hidden = false; pickerOpen = true;
+  };
+  pingBtn.addEventListener('pointerdown', () => { held = false; clearTimeout(holdTimer); holdTimer = setTimeout(() => { held = true; openPicker(); }, 450); });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) pingBtn.addEventListener(ev, () => clearTimeout(holdTimer));
+  pingBtn.addEventListener('contextmenu', e => e.preventDefault());
+  // A hold opens the note instead of arming the ping (capture: runs before the button's own click).
+  pingBtn.addEventListener('click', e => { if (held) { held = false; e.stopImmediatePropagation(); } else if (pickerOpen) closePicker(); }, true);
+  const bar = el('div', { class: 'bottombar tools' }, picker, undoBtn, redoBtn, pingBtn, penBtn);
   const playersText = el('div', { class: 'players', hidden: true });
   const root = el('div', { class: 'game' }, top, playersText, appLink, note, boardFrame, bar);
 
   const board = new BoardView(canvas);
   board.sounds = true;
-  board.onPingDone = () => { refresh(); setNote(''); };
+  board.onPingDone = () => { refresh(); if (!board.pingLimited) setNote(''); board.pingLimited = false; };
+  board.onPingLimited = () => { board.pingLimited = true; setNote('Easy on the pings, give it a moment.'); };
   if (window.__fenceline) window.__fenceline.board = board;
   board.onChanged = () => { pendingFix = null; if (mode !== 'tutorial' && !board.stroking) setNote(''); advanceGuide(); refresh(); save(); };
   board.onOffGuide = () => { const s = guide[guideAt]; if (s) setNote('Try the glowing gap. ' + s.text); };

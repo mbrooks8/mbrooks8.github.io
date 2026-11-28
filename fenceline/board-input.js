@@ -40,12 +40,13 @@ export class BoardInput {
   pingAt(x, y) {
     const g = this.game && this.game.grid;
     if (!g) return;
+    if (!this.pingLimit.allow(performance.now())) { if (this.onPingLimited) this.onPingLimited(); return; }
     const pad = 0.6 * g.edgeLength; // the paper around the board counts too
     const bx = Math.max(g.minX - pad, Math.min(g.maxX + pad, (x - this.offX) / this.scale));
     const by = Math.max(g.minY - pad, Math.min(g.maxY + pad, (y - this.offY) / this.scale));
     // The nearest dot goes along too, for 1.x phones that only know dots.
     const v = this.vertexNear(this.offX + bx * this.scale, this.offY + by * this.scale, Infinity);
-    this.onPing(v, bx / g.edgeLength, by / g.edgeLength);
+    this.onPing(v, bx / g.edgeLength, by / g.edgeLength, this.pingKind);
     this.buzz(25);
     if (this.sounds) play('ping');
   }

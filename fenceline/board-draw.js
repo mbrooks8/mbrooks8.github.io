@@ -1,6 +1,7 @@
 // Drawing the board: paper, dots, clues, fences, X marks, highlights, pings. Called once per frame.
 import { CONFETTI_MS, GLOW_FADE_MS } from './board-celebrate.js';
 import { Edge } from './core.js';
+import { pingGlyph } from './pings.js';
 import { pencilHatch, rgba, blend, pencilLine, pencilCircle } from './sketch.js';
 
 
@@ -192,6 +193,23 @@ export class BoardDraw {
           ctx.beginPath(); ctx.arc(this.offX + pm.x * this.scale, this.offY + pm.y * this.scale, unit * (0.15 + r * 0.6), 0, 6.2832); ctx.stroke();
           ctx.restore();
         }
+      }
+      // A feeling ping also floats its emoji up from the spot, on a small paper disc ringed in the player's pencil.
+      for (const pm of this.pings) {
+        const glyph = pingGlyph(pm.kind);
+        if (!glyph) continue;
+        const t = (now - pm.start) / PING_MS;
+        const px = this.offX + pm.x * this.scale, py = this.offY + pm.y * this.scale - unit * (0.5 + 0.35 * Math.min(1, t * 3));
+        const size = unit * 0.62;
+        ctx.save();
+        ctx.globalAlpha = t > 0.7 ? Math.max(0, (1 - t) / 0.3) : 1;
+        ctx.fillStyle = 'rgba(245,237,220,.9)';
+        ctx.strokeStyle = pm.color; ctx.lineWidth = lineW * 0.7;
+        ctx.beginPath(); ctx.arc(px, py, size * 0.75, 0, 6.2832); ctx.fill(); ctx.stroke();
+        ctx.font = `${size}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(glyph, px, py + size * 0.05);
+        ctx.restore();
       }
       if (this.pings.length) animate = true;
     }

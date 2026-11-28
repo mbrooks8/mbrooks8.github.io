@@ -3,6 +3,7 @@
 // showGame (app.js) calls createPlay(ctx); ctx is the game screen's shared state (see showGame).
 // The room logic itself (seats, protocol) is room.js; transports are net.js (online) and nearby.js (Android).
 import { Shape, Edge, Game, PuzzleCode, Boards } from './core.js';
+import { PingLimiter, pingGlyph } from './pings.js';
 import { store, formatTime } from './store.js';
 import { theme, el, text, button, chip, dialog } from './ui.js';
 import { pencilColor, pencilStyle, pencilSwatch } from './sketch.js';
@@ -17,6 +18,7 @@ export function createPlay(ctx) {
   const { opts, board, title, loading, noteText, playersText, setNote, showLoading, refresh, start } = ctx;
   // Play together.
   let link = null, room = null, coop = null;
+  const pingIn = {}; // per player: pings we've let through lately (a flood from one phone is ignored)
   let mpMode = opts.mpMode || Mode.VERSUS, mpW = opts.w || 7, mpH = opts.h || 7, mpDiff = opts.d || 'EASY', mpShape = opts.shape || Shape.SQUARE;
   let lobbyD = null, lobbyCol = null, lobbyStatus = '', resultsD = null, resultsCol = null;
   let countingDown = false, hostPuzzle = null, startWhenReady = false, lastSentProgress = -1, lastProgAt = 0, progTimer = 0;
@@ -79,7 +81,7 @@ export function createPlay(ctx) {
           round = msg.round;
           startRound(p, same);
         } break;
-        case 'PING': board.showPing(msg.vertex, colorOf(msg.player), msg.x, msg.y); play('ping'); setNote(`${nameOf(msg.player)} says: look here!`); break;
+        case 'PING': if (!(pingIn[msg.player] ||= new PingLimiter(0.7)).allow(performance.now())) break; board.showPing(msg.vertex, colorOf(msg.player), msg.x, msg.y, msg.kind); play('ping'); setNote(`${nameOf(msg.player)} says: ${pingGlyph(msg.kind) ? pingGlyph(msg.kind) : 'look here!'}`); break;
         case 'PROG': progress.set(msg.player, msg.fraction); updatePlayers(); fillResults(); break;
         case 'DONE':
           // Someone else got there first: a kind little "well played".
@@ -331,7 +333,7 @@ export function createPlay(ctx) {
       const send = g.onLocalChange;
       g.onLocalChange = (e, v, h) => { lastLocalEdit = performance.now(); if (send) send(e, v, h); };
       board.ownerColors = Array.from({ length: SEATS }, (_, i) => colorOf(i)); board.ownerStyles = Array.from({ length: SEATS }, (_, i) => styleOf(i));
-      board.onPing = (v, x, y) => { board.showPing(v, colorOf(r.me), x, y); if (room) room.broadcast({ t: 'PING', player: room.me, vertex: v, x, y }); };
+      board.onPing = (v, x, y, kind) => { board.showPing(v, colorOf(r.me), x, y, kind); if (room) room.broadcast({ t: 'PING', player: room.me, vertex: v, x, y, ...(kind ? { kind } : {}) }); };
     } else {
       board.ownerColors = null; board.ownerStyles = null;
       board.onPing = null;

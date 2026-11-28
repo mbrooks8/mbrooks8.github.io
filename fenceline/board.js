@@ -5,6 +5,7 @@
 import { BoardDraw } from './board-draw.js';
 import { BoardInput } from './board-input.js';
 import { BoardCelebrate } from './board-celebrate.js';
+import { PingLimiter } from './pings.js';
 
 export class BoardView {
   constructor(canvas) {
@@ -42,6 +43,9 @@ export class BoardView {
     this.frame = 0;
     this.crossPen = false; // Pen: X, taps make X instead of fence
     this.drawPen = false; // Pen: Draw, drag from dot to dot to draw (two fingers move the board)
+    this.pingLimit = new PingLimiter(); // too many pings in a row are held back
+    this.onPingLimited = null;
+    this.pingKind = ''; // which feeling the next ping carries ('' = plain rings)
     this.pingArmed = false; // co-op Ping button: the next tap points everyone at that spot
     this.onPingDone = null;
     this.pointers = new Map();
@@ -107,7 +111,7 @@ export class BoardView {
    * Flashes a few growing rings in [color] for a couple of seconds, at the spot [x], [y] (in edge
    * lengths, the same on every phone whatever its zoom), or at dot [vertex] when there's no spot.
    */
-  showPing(vertex, color, x, y) {
+  showPing(vertex, color, x, y, kind = '') {
     const g = this.game && this.game.grid;
     if (!g) return;
     const at = x != null && y != null && Number.isFinite(x) && Number.isFinite(y);
@@ -115,7 +119,7 @@ export class BoardView {
     const px = at ? x * g.edgeLength : g.vx[vertex], py = at ? y * g.edgeLength : g.vy[vertex];
     // A new ping close to an old one replaces it (no pile of rings).
     this.pings = this.pings.filter(p => Math.hypot(p.x - px, p.y - py) > 0.25 * g.edgeLength);
-    this.pings.push({ x: px, y: py, color, start: performance.now() });
+    this.pings.push({ x: px, y: py, color, kind, start: performance.now() });
     this.invalidate();
   }
 

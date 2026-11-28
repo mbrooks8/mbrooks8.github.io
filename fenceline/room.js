@@ -26,7 +26,7 @@ export const Msg = {
       case 'DONE': return `DONE\t${m.player}\t${m.ms}\t${m.hints}\t${m.place || 0}`;
       case 'MARK': return `MARK\t${m.player}\t${m.edge}\t${m.value}\t${m.hint ? 1 : 0}`;
       case 'STATE': return `STATE\t${m.board}`;
-      case 'PING': return `PING\t${m.player}\t${m.vertex}` + (m.x != null && m.y != null ? `\t${+m.x.toFixed(3)}\t${+m.y.toFixed(3)}` : '');
+      case 'PING': return `PING\t${m.player}\t${m.vertex}` + (m.x != null && m.y != null ? `\t${+m.x.toFixed(3)}\t${+m.y.toFixed(3)}` + (m.kind ? `\t${m.kind}` : '') : '');
       case 'REMATCH': return `REMATCH\t${m.player}`;
       case 'LEFT': return `LEFT\t${m.player}`;
     }
@@ -59,6 +59,8 @@ export const Msg = {
           const x = parseFloat(f[3]), y = parseFloat(f[4]);
           const m = { t: 'PING', player: int(f[1]), vertex: int(f[2]) };
           if (Number.isFinite(x) && Number.isFinite(y)) { m.x = x; m.y = y; }
+          // An emoji key follows the spot; older apps ignore it and show a plain ping.
+          if (/^[a-z]{1,12}$/.test(f[5] || '')) m.kind = f[5];
           return m;
         }
         case 'REMATCH': return { t: 'REMATCH', player: int(f[1]) };
