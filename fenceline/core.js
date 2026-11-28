@@ -1360,7 +1360,7 @@ export const Tutorial = {
   steps: [
     { title: 'Draw and mark', tip: 'Each number tells how many of its 4 sides are fence.', kind: 'BASICS', size: 3, seed: 1n, keep: 0.8 },
     { title: 'Follow the dots', tip: 'Every dot has two fence pieces touching it, or none.', kind: 'DOTS', size: 3, seed: 13n, keep: 0.8 },
-    { title: 'Starter tricks', tip: 'Start with the 0s, then the corners.', kind: 'TRICKS', size: 3, seed: 11n, keep: 0.8 },
+    { title: 'Your tools', tip: 'Undo, the pen and the ⋯ menu.', kind: 'TOOLS', size: 3, seed: 11n, keep: 0.8 },
   ],
   puzzle(i) { const s = Tutorial.steps[i]; return PuzzleGenerator.lesson(s.size, s.size, s.seed, s.keep); },
   goalPuzzle() { return PuzzleGenerator.lesson(3, 3, 3n, 0.8); },
@@ -1373,7 +1373,6 @@ export const Tutorial = {
     const done = new Set(Tutorial.prepared(i, p));
     const line = (text, edges) => { const e = edges.filter((x) => !done.has(x)); e.forEach((x) => done.add(x)); out.push({ text, edges: e, value: Edge.LINE }); };
     const cross = (text, edges) => { const e = edges.filter((x) => !done.has(x) && !sol[x]); e.forEach((x) => done.add(x)); out.push({ text, edges: e, value: Edge.CROSS }); };
-    const outer = (c) => Array.from(g.cellEdges[c]).filter((e) => g.edgeCells[e].length === 1);
     const corners = [0, p.width - 1, p.width * (p.height - 1), p.width * p.height - 1];
     const zeros = range(g.cellCount).filter((c) => p.clues[c] === 0);
     const allSol = range(g.edgeCount).filter((e) => sol[e]);
@@ -1390,30 +1389,43 @@ export const Tutorial = {
           cross('A 0 means none of its sides are fence. Press and hold the glowing gap to mark it X.', gaps.slice(0, 1));
           cross('Mark its other sides X too. Press and hold each one.', gaps.slice(1));
         }
-        line('Now close the fence into one ring. Draw the glowing gaps.', allSol);
+        line('Now continue the fence so that it completes the loop.', allSol);
         break;
       }
       case 'DOTS': {
         const order = loopOrder(p);
         const shared = (a, b) => [0, 1].map((k) => g.edgeVertices[2 * a + k]).find((v) => v === g.edgeVertices[2 * b] || v === g.edgeVertices[2 * b + 1]);
-        line('A fence never stops at a dot. This one has just one piece, so carry it on: draw the glowing gap.', [order[2]]);
+        line('A fence never stops on a dot. Continue this fence.', [order[2]]);
         const full = [1, 2].map((k) => shared(order[k - 1], order[k])).find((v) => Array.from(g.vertexEdges[v]).some((e) => !sol[e]));
         if (full !== undefined) cross("This dot has two fence pieces now. That's the most a dot can have, so mark its other gaps X.", Array.from(g.vertexEdges[full]));
-        line('Same again: carry the fence on.', [order[3]]);
+        line('Same again, continue the fence.', [order[3]]);
         line('Keep going until the fence closes into one ring. Every dot ends with two pieces, or none.', order);
         break;
       }
-      case 'TRICKS': {
-        zeros.forEach((z, k) => cross(k === 0 ? 'A 0 has no fence on any side. Mark all its sides X.' : 'Another 0: X on all its sides too.', Array.from(g.cellEdges[z])));
-        const c3 = corners.find((c) => p.clues[c] === 3);
-        if (c3 !== undefined) line('A 3 in a corner: both outer sides are fence. If one were empty, the fence would stop at the corner dot.', outer(c3));
-        const c1 = corners.find((c) => p.clues[c] === 1);
-        if (c1 !== undefined) cross('A 1 in a corner: both outer sides stay empty. A fence there would stop at the corner dot.', outer(c1));
+      case 'TOOLS': {
+        const order = loopOrder(p);
+        // A wait step glows nothing; it moves on when the player uses that control (see game.js tourEvent).
+        const wait = (text, wait) => out.push({ text, edges: [], value: Edge.LINE, wait });
+        const cellGap = Array.from(g.cellEdges[zeros[0]]).find((e) => !sol[e]);
+        const wrong = range(g.edgeCount).find((e) => !sol[e] && e !== cellGap && !zeros.some((z) => g.cellEdges[z].includes(e)));
+        line('Tap the glowing gap to draw a fence.', [order[0]]);
+        wait('Made a mistake? Tap Undo to take back your last move.', 'undo');
+        wait('Changed your mind? Tap Redo to bring it back.', 'redo');
+        wait('The Pen button changes what a tap does. Tap it once: now taps make an X.', 'pen-x');
+        cross('Tap the glowing gap to mark it X.', [cellGap]);
+        wait('Tap Pen again for Draw. Now you can drag along the fence.', 'pen-draw');
+        line('Drag from dot to dot along the glowing gaps to draw a long piece in one go.', [order[2], order[3]]);
+        wait('Tap Pen once more to go back to Fence.', 'pen-fence');
+        out.push({ text: 'Tap the glowing gap. This fence does not belong in the loop, on purpose.', edges: [wrong], value: Edge.LINE });
+        wait('Tap ⋯ to open the menu.', 'menu');
+        wait('Tap Clear mistakes to erase the wrong fence.', 'clear');
+        wait('Open the menu again.', 'menu');
+        wait('Tap Hint to see the next move. (Start over, in the same menu, wipes the board.)', 'hint');
         line('Now finish the fence. Draw the glowing gaps.', allSol);
         break;
       }
     }
-    return out.filter((s) => s.edges.length > 0);
+    return out.filter((s) => s.wait || s.edges.length > 0);
   },
 };
 

@@ -49,7 +49,7 @@ export function learnDialog() {
     return b;
   };
   const anyDone = Tutorial.steps.some((s, i) => store.lessonDone(i));
-  const subs = ['tap for fence, hold for X', 'two fence pieces or none', '0s, 3s and corners'];
+  const subs = ['tap for fence, hold for X', 'two fence pieces or none', 'undo, pen and the ⋯ menu'];
   const lessons = Tutorial.steps.map((s, i) => {
     const p = Tutorial.puzzle(i);
     let lines = null;

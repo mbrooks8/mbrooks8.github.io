@@ -213,6 +213,7 @@ canvas.board {
 .divider { border: 0; border-top: 1.5px dashed var(--inkSoft); opacity: .4; margin: 10px 0; width: 100%; }
 .mini-note { font-size: 14px; color: var(--inkSoft); text-align: center; }
 .noteitem { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; cursor: pointer; padding: 9px 4px; font-size: 19px; color: var(--ink); text-align: left; min-height: 44px; }
+.noteitem .sub { display: block; font-size: 14px; color: var(--inkSoft); opacity: .7; }
 .noteitem:active { opacity: .6; }
 .field { padding: 4px 2px 8px; }
 .field .codein { padding: 4px 0; }
@@ -262,6 +263,8 @@ button.rowitem { cursor: pointer; min-height: 60px; }
 .tool.dim { opacity: .4; }
 .tool.pen { color: var(--accent); }
 .tool.on .ring { outline: 2px dashed var(--hint); outline-offset: -4px; border-radius: 50%; }
+.tool.tourglow .ring, .iconbtn.tourglow { animation: tourpulse 1.4s ease-in-out infinite; border-radius: 50%; }
+@keyframes tourpulse { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 10px 4px var(--hint); } }
 .tool .word { min-height: 18px; }
 .game.won .boardframe { margin-bottom: var(--wonPad, 0px); }
 .wincard { text-align: center; }

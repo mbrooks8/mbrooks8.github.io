@@ -29,7 +29,7 @@ export function showGame(opts) {
   const title = el('div', { class: 'gtitle' });
   const timerText = el('div', { class: 'timer' });
   const menuBtn = el('button', { type: 'button', class: 'iconbtn', 'aria-label': 'Menu' }, icon('dots', 28));
-  menuBtn.addEventListener('click', () => menuDialog());
+  menuBtn.addEventListener('click', () => { menuDialog(); tourEvent('menu'); });
   // Just back, the timer and ⋯ (a small line above the timer only in lessons).
   const top = el('div', { class: 'topbar' }, back, el('div', { class: 'topmid' }, title, timerText), menuBtn);
   const appLink = el('div', { class: 'applink', hidden: true });
@@ -51,14 +51,15 @@ export function showGame(opts) {
     return b;
   };
   // A finished puzzle stays finished: undo would un-solve a win that is already counted.
-  const undoBtn = tool('undo', '', 'Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); track(); game.undo(); track(Kind.UNDO); board.clearHighlights(); pendingFix = null; refresh(); save(); });
-  const redoBtn = tool('redo', '', 'Redo', () => { if (!game || game.isSolved()) return; if (game.canRedo) play('flick'); game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); });
+  const undoBtn = tool('undo', '', 'Undo', () => { if (!game || game.isSolved()) return; if (game.canUndo) play('flick'); track(); game.undo(); track(Kind.UNDO); board.clearHighlights(); pendingFix = null; refresh(); save(); tourEvent('undo'); });
+  const redoBtn = tool('redo', '', 'Redo', () => { if (!game || game.isSolved()) return; if (game.canRedo) play('flick'); game.redo(); board.clearHighlights(); pendingFix = null; refresh(); save(); tourEvent('redo'); });
   // Pen: Fence -> X -> Draw (drag from dot to dot) -> Fence.
   const penBtn = tool('pen', 'Fence', 'Pen: Fence', () => {
     if (board.drawPen) { board.drawPen = false; board.crossPen = false; }
     else if (board.crossPen) { board.crossPen = false; board.drawPen = true; }
     else board.crossPen = true;
     refresh();
+    tourEvent(board.drawPen ? 'pen-draw' : board.crossPen ? 'pen-x' : 'pen-fence');
   }, { kind: 'wash', cls: 'pen' });
   // Co-op: Ping, then tap anywhere on the board to point everyone at that spot.
   const pingBtn = tool('ping', 'Ping', 'Ping', () => { board.pingArmed = !board.pingArmed; refresh(); if (board.pingArmed) setNote('Tap anywhere to show everyone.'); });
@@ -199,15 +200,27 @@ export function showGame(opts) {
   const advanceGuide = () => {
     const g = game;
     if (!g) return;
-    while (guideAt < guide.length && guide[guideAt].edges.every(e => g.marks[e] === guide[guideAt].value)) guideAt++;
+    while (guideAt < guide.length && (guide[guideAt].wait ? guide[guideAt].waitDone : guide[guideAt].edges.every(e => g.marks[e] === guide[guideAt].value))) guideAt++;
     if (guideAt >= guide.length) {
       guide = [];
       board.setGuide([], false);
+      glowTool('');
       return;
     }
     const s = guide[guideAt];
     board.setGuide(s.edges.filter(e => g.marks[e] !== s.value), true);
+    glowTool(s.wait || '');
     setNote(s.text);
+  };
+  /** The controls tour (lesson 3): a step that waits for a button moves on when it is used. */
+  const tourEvent = name => {
+    const s = guide[guideAt];
+    if (mode === 'tutorial' && s && s.wait === name) { s.waitDone = true; advanceGuide(); }
+  };
+  /** Pulse the button the tour is asking for (undo, redo, pen, menu). */
+  const glowTool = name => {
+    const target = { undo: undoBtn, redo: redoBtn, 'pen-x': penBtn, 'pen-draw': penBtn, 'pen-fence': penBtn, menu: menuBtn }[name];
+    for (const b of [undoBtn, redoBtn, penBtn, menuBtn]) b.classList.toggle('tourglow', b === target);
   };
 
   /** Before the first lesson: what you're aiming for, and a finished puzzle to look at. */
@@ -220,8 +233,8 @@ export function showGame(opts) {
       text('The goal', { size: 26, bold: true }),
       text('Join the dots into one closed fence. Each number tells how many of its 4 sides are fence.', { size: 16 }),
       mini,
-      text('A finished puzzle: one fence that goes all the way around, and every number matches. Each dot has two fence pieces, or none.', { size: 15, color: 'inkSoft' }),
-      text('Tap the gap between two dots to draw a fence. Press and hold a gap to mark it X, a gap you know stays empty.', { size: 16, cls: 'gap10' }),
+      text('Once a fence goes all the way around and every number is satisfied, a puzzle is finished.', { size: 15, color: 'inkSoft' }),
+      text('Tap the gap between two dots to draw a fence. Press and hold a gap to mark it X.', { size: 16, cls: 'gap10' }),
       el('div', { class: 'gap14' }, button('Show me how', () => d.close(), { size: 18, accent: 'accent' })),
     );
     let mb = null;
@@ -279,6 +292,7 @@ export function showGame(opts) {
     board.showHint(h.edge, h.focusCell, h.focusVertex);
     setNote(h.reason);
     refresh(); save();
+    tourEvent('hint');
   };
 
   const check = () => {
@@ -307,23 +321,24 @@ export function showGame(opts) {
   const menuDialog = () => {
     let d;
     const col = el('div', { class: 'col', style: 'gap:0' });
-    const item = (ic, label, action, color) => {
-      const b = el('button', { type: 'button', class: 'noteitem' }, icon(ic, 24, color), el('span', { text: label }));
+    const item = (ic, label, action, color, sub) => {
+      const b = el('button', { type: 'button', class: 'noteitem' }, icon(ic, 24, color), el('span', {}, label, sub && mode === 'tutorial' ? el('span', { class: 'sub', 'aria-hidden': 'true', text: sub }) : ''));
       b.addEventListener('click', () => { d.close(); action(); });
       col.append(b);
     };
     const multi = mode === 'mp';
     // Hint first circles any wrong marks (Hint again erases them), else draws the next piece.
     // With "No hints" on it is Check, which only looks for mistakes.
-    item(hintsOff() ? 'check' : 'bulb', hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint(), 'var(--hint)');
+    item(hintsOff() ? 'check' : 'bulb', hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint(), 'var(--hint)', 'shows the next move');
     item('eraser', 'Clear mistakes', () => {
       const n = game ? game.clearMistakes() : 0;
       sharedHints();
       if (n) play('erase');
       setNote(n === 0 ? 'No mistakes!' : `Erased ${n} mark${n === 1 ? '' : 's'}.`);
       refresh(); save();
-    });
-    if (!multi) item('restart', 'Start over', confirmReset);
+      if (n) tourEvent('clear');
+    }, undefined, 'erases marks that are wrong');
+    if (!multi) item('restart', 'Start over', confirmReset, undefined, 'wipes the board');
     col.append(el('hr', { class: 'divider', style: 'margin:6px 0' }));
     if (multi && mp.room && !mp.nearby && mp.room.roomId) item('invite', 'Invite', () => {
       const c = mp.room.roomId.toUpperCase();
