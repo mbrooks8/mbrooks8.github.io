@@ -16,7 +16,7 @@ import { shapeChip } from './shapes.js';
 import { thumb } from './thumb.js';
 import { shopDialog } from './shop.js';
 import { wardrobeDialog } from './wardrobe.js';
-import { leaderboardsOn, showLeaderboards } from './leaderboards.js';
+import { leaderboardsOn, showLeaderboards, watchGamesStatus } from './leaderboards.js';
 import { openGame } from './app.js';
 import { replayDialog } from './replay.js';
 import { timelapseIds } from './timelapse.js';
@@ -150,7 +150,11 @@ export function statsDialog() {
   const kids = [el('div', { class: 'stat3' }, ...cells)];
   // Leaderboards (Google Play Games, Android app only).
   kids.push(el('div', { class: 'gap8 row gap6' }, button('Wardrobe', () => wardrobeDialog(), { size: 20, kind: 'outline' }), button('Store', () => shopDialog(), { size: 20, kind: 'outline' })));
-  if (leaderboardsOn()) kids.push(el('div', { class: 'gap8' }, button('Leaderboards', () => showLeaderboards(), { size: 20, kind: 'outline', icon: 'chart' })));
+  if (leaderboardsOn()) {
+    const lbNote = text('', { size: 15, color: 'inkSoft', cls: 'center' });
+    watchGamesStatus(m => { lbNote.textContent = m; lbNote.style.display = m ? '' : 'none'; });
+    kids.push(el('div', { class: 'gap8' }, button('Leaderboards', () => showLeaderboards(), { size: 20, kind: 'outline', icon: 'chart' })), lbNote);
+  }
   kids.push(el('hr', { class: 'divider gap8' }));
 
   const note = text('', { size: 15, color: 'inkSoft' });

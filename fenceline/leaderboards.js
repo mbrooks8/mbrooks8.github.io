@@ -1,7 +1,7 @@
 // Leaderboards: points are always counted (they show in Stats); with the Android app the scores also go to Google Play Games.
 import { store } from './store.js';
 import { winPoints, scoresForWin, BOARDS } from './points.js';
-import { gamesOn, gamesSubmit, gamesShow } from './native.js';
+import { gamesOn, gamesSubmit, gamesShow, onNative } from './native.js';
 
 /** Call right after store.recordWin: adds the points and sends the scores. Returns the points earned. */
 export function recordScores(puzzle, ms, hints, daily, repeat = false) {
@@ -28,5 +28,18 @@ export function sendTotals() {
 }
 
 export function leaderboardsOn() { return gamesOn(); }
-export function showLeaderboards(key = '') { sendTotals(); gamesShow(key); }
+export function showLeaderboards(key = '') { lastMessage = ''; listeners.forEach(f => f('')); sendTotals(); gamesShow(key); }
 export { BOARDS };
+
+/** What to tell the player when Play Games says something went wrong (plain words, no codes). */
+export function gamesMessage(r) {
+  if (!r || r.ok) return '';
+  if (r.reason === 'open') return "Couldn't open the leaderboards. Try again in a bit.";
+  return "Couldn't sign in to Google Play Games. Check you're signed in to Play Games on this phone, then try again.";
+}
+
+let lastMessage = '';
+const listeners = new Set();
+onNative('games-status', r => { lastMessage = gamesMessage(r); listeners.forEach(f => f(lastMessage)); });
+/** Calls fn with the current message ('' when all is well) now and whenever it changes. Returns an unsubscribe function. */
+export function watchGamesStatus(fn) { listeners.add(fn); fn(lastMessage); return () => listeners.delete(fn); }
