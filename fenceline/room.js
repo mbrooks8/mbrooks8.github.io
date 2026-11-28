@@ -5,6 +5,8 @@ import { Puzzle } from './core.js';
 export const Mode = { VERSUS: 'VERSUS', COOP: 'COOP' };
 export const SEATS = 32;
 export const PENCILS = 5;
+/** Pencils bought in the store are numbered from 100 (see sketch.js EXTRA_PENCILS); older phones draw them in a plain colour. */
+export const EXTRA_PENCIL_BASE = 100, EXTRA_PENCILS = 8;
 export const RECENT_MS = 15000;
 
 const clean = (s, max = 24) => String(s ?? '').replace(/[\t\u001f\n\r]/g, ' ').slice(0, max);
@@ -14,6 +16,7 @@ export const Msg = {
   encode(m) {
     switch (m.t) {
       case 'HELLO': return `HELLO\t${clean(m.name)}\t${m.pencil}\t${clean(m.id)}`;
+      case 'PENCIL': return `PENCIL\t${m.pencil}`;
       case 'WELCOME': return `WELCOME\t${m.player}`;
       case 'DENIED': return 'DENIED';
       case 'LOBBY': {
@@ -39,6 +42,7 @@ export const Msg = {
       const int = (x) => { const v = parseInt(x, 10); if (Number.isNaN(v)) throw new Error('bad'); return v; };
       switch (f[0]) {
         case 'HELLO': return { t: 'HELLO', name: f[1], pencil: int(f[2]), id: f[3] ?? '' };
+        case 'PENCIL': return { t: 'PENCIL', pencil: int(f[1]) }; // a guest picks another colour (phones that don't know it ignore it)
         case 'WELCOME': return { t: 'WELCOME', player: int(f[1]) };
         case 'DENIED': return { t: 'DENIED' };
         case 'LOBBY': {
@@ -238,6 +242,14 @@ export class Room {
         this.L('onJoinRequest', peer, (msg.name || '').trim() || 'A friend', this.returningSeat(msg) >= 0);
         return;
       }
+      case 'PENCIL': {
+        if (!this.peerPlayer.has(peer)) return;
+        const seat = this.peerPlayer.get(peer);
+        this.pencils[seat] = this.freePencil(msg.pencil, seat, this.pencils[seat]);
+        this.broadcast(this.lobby());
+        this.L('onLobby');
+        return;
+      }
       case 'PROG': case 'DONE': case 'MARK': case 'REMATCH': case 'PING': case 'CLEARED': {
         if (!this.peerPlayer.has(peer)) return;
         const from = this.peerPlayer.get(peer);
@@ -327,11 +339,26 @@ export class Room {
     }
   }
 
-  freePencil(wanted, seat) {
+  /** The pencil [seat] gets: [wanted] if it exists and is free, else [keep] when it is given, else the first free one. */
+  freePencil(wanted, seat, keep = -1) {
     const taken = new Set(this.players.filter((p) => p !== seat).map((p) => this.pencils[p]));
-    if (wanted >= 0 && wanted < PENCILS && !taken.has(wanted)) return wanted;
+    const real = (wanted >= 0 && wanted < PENCILS) || (wanted >= EXTRA_PENCIL_BASE && wanted < EXTRA_PENCIL_BASE + EXTRA_PENCILS);
+    if (real && !taken.has(wanted)) return wanted;
+    if (keep >= 0) return keep;
     let i = 0; while (taken.has(i)) i++;
     return i;
+  }
+
+  /** Pick another pencil colour once in the room. A colour a friend already has is refused (returns false). */
+  setPencil(wanted) {
+    if (this.me < 0) { this.myPencil = wanted; return true; }
+    const mine = this.pencils[this.me];
+    const got = this.freePencil(wanted, this.me, mine);
+    if (got !== wanted) return false;
+    this.myPencil = wanted;
+    this.pencils[this.me] = wanted;
+    if (this.isHost) { this.broadcast(this.lobby()); this.L('onLobby'); } else this.broadcast({ t: 'PENCIL', pencil: wanted });
+    return true;
   }
 
   lobby() {

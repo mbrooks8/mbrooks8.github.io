@@ -9,6 +9,7 @@ import { BoardView } from './board.js';
 import { Mode } from './room.js';
 import { play } from './sound.js';
 import { PING_KINDS, pingGlyph } from './pings.js';
+import { ownedPings } from './cosmetics.js';
 import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, JOIN_BASE, factory, isAndroid, keepAwake } from './common.js';
 import { createPlay } from './play.js';
 import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
@@ -83,7 +84,7 @@ export function showGame(opts) {
     onclick: () => { setKind(key); closePicker(); board.pingArmed = true; refresh(); setNote('Tap anywhere to show everyone.'); },
   }, glyph ? el('span', { class: 'glyph', text: glyph }) : icon('ping', 26));
   const openPicker = () => {
-    picker.replaceChildren(pickBtn('', '', 'Plain ping'), ...PING_KINDS.map(k => pickBtn(k.key, k.glyph, k.word)));
+    picker.replaceChildren(pickBtn('', '', 'Plain ping'), ...ownedPings(store.owned).map(k => pickBtn(k.key, k.glyph, k.word)));
     picker.hidden = false; pickerOpen = true;
   };
   pingBtn.addEventListener('pointerdown', () => { held = false; clearTimeout(holdTimer); holdTimer = setTimeout(() => { held = true; openPicker(); }, 450); });
@@ -433,10 +434,10 @@ export function showGame(opts) {
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
     const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, daily) : false;
-    if (!alreadyDone && mode !== 'tutorial') recordScores(p, g.elapsedMs, g.hintsUsed, daily);
+    const earned = !alreadyDone && mode !== 'tutorial' ? recordScores(p, g.elapsedMs, g.hintsUsed, daily) : 0;
     store.savedGame = null;
     if (!alreadyDone) board.buzz(40);
-    setTimeout(() => { if (!disposed) showWin(g, best); }, showMs);
+    setTimeout(() => { if (!disposed) showWin(g, best, earned); }, showMs);
   };
 
   /** Keeps this game's timelapse (co-op: with everyone's pencil and name); returns its id for the history. */
@@ -453,7 +454,7 @@ export function showGame(opts) {
   };
 
   /** The win card: a taped card at the bottom, so the shaded loop stays in view above it. */
-  const showWin = (g, newBest) => {
+  const showWin = (g, newBest, earned = 0) => {
     let d;
     const cheers = ['Lovely loop!', 'Neatly fenced!', 'All closed up!', 'Beautifully done!', "That's the one!"];
     const seed = g.puzzle.seed == null ? 0n : BigInt(g.puzzle.seed);
@@ -462,6 +463,7 @@ export function showGame(opts) {
     const line = el('div', { class: 'line' }, `${formatTime(g.elapsedMs)} · ${g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`}`);
     if (mode === 'daily' && isTodaysDaily(g.puzzle)) line.append(' · ', icon('candle', 16, 'var(--hint)'), String(store.dailyStreak));
     kids.push(line);
+    if (earned > 0) kids.push(text(`+${earned.toLocaleString('en-US')} points`, { size: 16, color: 'inkSoft', cls: 'center' }));
     if (newBest) kids.push(text('★ New best! ★', { size: 17, bold: true, color: 'hint', cls: 'center' }));
     const links = [];
     if (mode === 'tutorial') {

@@ -1,6 +1,7 @@
 // Settings, stats, history and the saved game, kept in localStorage.
 // Every access is guarded: private windows and blocked storage just behave like a fresh install.
 import { Shape, Boards } from './core.js';
+import { parseOwned, canBuy, goodById, PENCIL_GOODS } from './cosmetics.js';
 
 const P = 'fenceline.';
 const mem = {};
@@ -37,7 +38,7 @@ export const store = {
   get keepAwake() { return bool('keepAwake', true); }, set keepAwake(v) { set('keepAwake', v); },
   get noHints() { return bool('noHints', false); }, set noHints(v) { set('noHints', v); },
   get plainNumbers() { return bool('plainNumbers', false); }, set plainNumbers(v) { set('plainNumbers', v); },
-  get pencil() { return int('pencil', 0); }, set pencil(v) { set('pencil', v); },
+  get pencil() { const p = int('pencil', 0); return p < 100 || this.owned.includes(PENCIL_GOODS.find(g => g.pencil === p)?.id) ? p : 0; }, set pencil(v) { set('pencil', v); },
   /** 'system' | 'day' | 'night' */
   get theme() { const t = get('theme', 'system'); return ['system', 'day', 'night'].includes(t) ? t : 'system'; },
   set theme(v) { set('theme', v); },
@@ -91,6 +92,24 @@ export const store = {
   /** Points earned so far (see points.js). */
   get points() { return int('points', 0); },
   addPoints(n) { set('points', this.points + Math.max(0, Math.round(n))); return this.points; },
+
+  // The store (cosmetics.js). `points` only ever goes up (it is the leaderboard total); what is spent is kept apart.
+  get spent() { return int('spent', 0); },
+  /** Points to spend. */
+  get balance() { return Math.max(0, this.points - this.spent); },
+  /** Ids of the goods bought, in the order bought. */
+  get owned() { return parseOwned(get('owned', '')); },
+  /** Buys a good with points. Returns true when bought. */
+  buy(id) {
+    const owned = this.owned;
+    if (!canBuy(id, this.balance, owned).ok) return false;
+    set('spent', this.spent + goodById(id).price);
+    set('owned', [...owned, id].join(','));
+    return true;
+  },
+  /** The paper in use (an id from cosmetics.js BACKGROUNDS; the plain 'cream' if it is not owned). */
+  get background() { const b = get('background', 'cream'); return b === 'cream' || this.owned.includes('bg-' + b) ? b : 'cream'; },
+  set background(v) { set('background', v); },
 
   /** Records a win; returns true when it is a new best time. */
   recordWin(size, d, ms, hints, daily) {

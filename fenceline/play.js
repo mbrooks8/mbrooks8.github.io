@@ -6,11 +6,13 @@ import { Shape, Edge, Game, PuzzleCode, Boards } from './core.js';
 import { RematchClock } from './rematch.js';
 import { PingLimiter, pingGlyph } from './pings.js';
 import { store, formatTime } from './store.js';
-import { theme, el, text, button, chip, dialog } from './ui.js';
+import { theme, el, text, button, chip, dialog, sk } from './ui.js';
 import { pencilColor, pencilStyle, pencilSwatch } from './sketch.js';
 import { Mode, CoopBoard, SEATS, parsePuzzle as roomParse } from './room.js';
 import { Link } from './net.js';
 import { NearbyLink } from './nearby.js';
+import { scribble } from './shop.js';
+import { ownedPencils } from './cosmetics.js';
 import { play } from './sound.js';
 import { GROUP_SIZES, JOIN_BASE, cap, diffLabel, factory, shareText, defaultName } from './common.js';
 import { leaveGame } from './app.js';
@@ -65,6 +67,20 @@ export function createPlay(ctx) {
   /** ★ marks whoever hosts right now (it moves when hosting moves). */
   const star = p => (room && p === (room.isHost ? room.me : room.hostSeat) ? '★ ' : '');
   const dotLine = (p, label) => el('span', { class: 'pl' }, pencilSwatch(room ? (room.pencils[p] || 0) : 0, theme.night), label);
+
+  /** A row of pencils to pick from: the ones this player owns that no friend has taken. Null when there is only one. */
+  const pencilRow = r => {
+    if (!r || r.me < 0) return null;
+    const taken = new Set(r.players.filter(p => p !== r.me).map(p => r.pencils[p]));
+    const mine = r.pencils[r.me];
+    const free = ownedPencils(store.owned).filter(i => i === mine || !taken.has(i));
+    if (free.length < 2) return null;
+    return el('div', { class: 'scribbles wrap', role: 'group', 'aria-label': 'Your pencil' }, ...free.map(i => {
+      const b = el('button', { type: 'button', class: 'pick', 'aria-label': 'Pencil ' + (i + 1), 'aria-pressed': i === mine ? 'true' : 'false' }, scribble(i));
+      b.addEventListener('click', () => { if (r.setPencil(i)) { store.pencil = i; updatePlayers(); fillLobby(); fillResults(); } });
+      return i === mine ? sk(b, { kind: 'ring', stroke: pencilColor(i, theme.night) }) : b;
+    }));
+  };
 
   const linkUi = {
     onLobby(r) {
@@ -276,6 +292,8 @@ export function createPlay(ctx) {
         kids.push(el('div', { class: 'roomcode' }, el('div', { class: 'lbl2', text: 'Room code' }), el('div', { class: 'big', text: r.roomId.toUpperCase() })));
         kids.push(button('Share invite', shareInvite, { size: 16 }));
       }
+      const row = pencilRow(r);
+      if (row) kids.push(row);
       kids.push(el('div', { class: 'plist' }, ...shownPlayers(r).map(p => dotLine(p, star(p) + (p === r.me ? `${r.names[p]} (you)` : r.names[p] || '') + (r.away[p] ? ' (away)' : '')))));
       if (r.isHost) {
         const b = button('Start', () => { if (r.here.length >= 2) launchRound(); }, { size: 20, kind: 'primary' });
@@ -471,6 +489,8 @@ export function createPlay(ctx) {
       })));
       if (!g.isSolved()) kids.push(button('Keep drawing', () => { if (resultsD) resultsD.close(); resultsD = null; resultsCol = null; }, { size: 17 }));
     }
+    const row = pencilRow(r);
+    if (row) kids.push(row);
     if (r && wantsRematch.size) {
       const asks = [...wantsRematch].filter(p => p !== r.me).map(nameOf);
       const t = wantsRematch.has(r.me) && !r.isHost ? 'Asked the host for another round…' : asks.length ? `${asks.join(', ')} ${asks.length === 1 ? 'wants' : 'want'} another round!` : '';

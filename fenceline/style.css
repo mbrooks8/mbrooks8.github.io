@@ -291,6 +291,17 @@ button.rowitem { cursor: pointer; min-height: 60px; }
 .home .picks { margin-top: 22px; }
 .home .picks + .picks { margin-top: 10px; }
 .home .more + .picks, .home .picks.around { margin-top: 26px; }
+/* The store */
+.shelf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 4px; }
+.shelf.pings { grid-template-columns: 1fr; }
+.good { background: none; border: 0; cursor: pointer; padding: 8px 4px; color: var(--ink); display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 44px; font: inherit; }
+.shelf.pings .good { flex-direction: row; justify-content: space-between; gap: 8px; padding: 8px 6px; }
+.good .gname { font-size: 16px; }
+.good .gprice { font-size: 14px; color: var(--inkSoft); }
+.good:focus-visible { outline: 2px dashed var(--hint); outline-offset: 2px; }
+.paperprev { display: block; width: 44px; height: 30px; border: 1.5px solid var(--inkSoft); border-radius: 3px; }
+.glyphs { font-size: 17px; white-space: nowrap; font-family: system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.scribbles.wrap { flex-wrap: wrap; gap: 2px; }
 .openapp { display:flex; align-items:center; justify-content:space-between; gap:10px; z-index:30; top:calc(8px + var(--sat)); position:fixed; }
 .openapp-go { color: inherit; font-weight:bold; text-decoration:underline; }
 .openapp-x { background:none; border:0; font-size:22px; color:inherit; }

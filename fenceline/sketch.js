@@ -14,19 +14,44 @@ const PLAYER_DAY = ['#B5533C', '#2F4FA0', '#D09C30', '#C467A6', '#4A4641', '#48A
 const PLAYER_NIGHT = ['#F08A5D', '#6F93F2', '#F0CF5E', '#F2A2C8', '#E2DCD2', '#93E3F5'];
 const STYLES = ['solid', 'dashed', 'dotted'];
 
+/**
+ * Pencils from the store, numbered from 100. Each has its own line style besides its colour, so friends can tell them
+ * apart without colour (the name is in the store and the players list too).
+ */
+export const EXTRA_PENCILS = [
+  { name: 'Forest', day: '#3E7B4B', night: '#8FD19B', style: 'solid' },
+  { name: 'Plum', day: '#7B3F8F', night: '#C69AE0', style: 'dashed' },
+  { name: 'Teal', day: '#1E8C8C', night: '#6FD6D2', style: 'dotted' },
+  { name: 'Cocoa', day: '#6B4630', night: '#C9A383', style: 'dashed' },
+  { name: 'Lime', day: '#7F9A1F', night: '#C6E05A', style: 'dotted' },
+  { name: 'Cherry', day: '#B01E4A', night: '#F27A9E', style: 'solid' },
+];
+const extra = i => (i >= 100 && i < 100 + EXTRA_PENCILS.length ? EXTRA_PENCILS[i - 100] : null);
+
 export const DAY = {
   paper: '#F5EDDC', paperShade: '#EDE2CC', ink: '#4A4641', inkSoft: '#9A8F80', done: '#6A9A5B',
   error: '#D1495B', hint: '#E0A030', ruling: 'rgba(91,136,181,0.165)', card: '#FBF6EA',
 };
+const DAY_BASE = { ...DAY };
 export const NIGHT = {
   paper: '#2A2520', paperShade: '#332D27', ink: '#E8DFD0', inkSoft: '#9C9283', done: '#8FBF82',
   error: '#F08A7A', hint: '#F2C45A', ruling: 'rgba(63,110,156,0.133)', card: '#35302A',
 };
 
+const NIGHT_BASE = { ...NIGHT };
+/** Paper from the store: [day] and [night] replace some colours of the palettes (null puts the plain paper back). */
+export function setPaper(day, night) {
+  Object.assign(DAY, DAY_BASE, day || {});
+  Object.assign(NIGHT, NIGHT_BASE, night || {});
+  for (const k of Object.keys(paperCache)) delete paperCache[k];
+}
+
 /** Pencil colour for a pencil number. Past 6 the colours repeat (with a new line style, see pencilStyle);
  *  past 18 they also get a shade darker (day) or lighter (night). */
 export function pencilColor(index, night) {
-  const i = Math.max(0, index | 0);
+  const ex = extra(index | 0);
+  if (ex) return night ? ex.night : ex.day;
+  const i = (index | 0) >= 100 ? 0 : Math.max(0, index | 0); // 100+ that is not known (a newer app) shows as a plain colour
   const c = (night ? PLAYER_NIGHT : PLAYER_DAY)[i % 6];
   const round = Math.floor(i / 18);
   return round % 2 ? blend(c, night ? '#FFFFFF' : '#000000', 0.3) : c;
@@ -34,6 +59,8 @@ export function pencilColor(index, night) {
 
 /** Line style for a pencil number: solid for the first 6 players, then dashed, then dotted. */
 export function pencilStyle(index) {
+  const ex = extra(index | 0);
+  if (ex) return ex.style;
   return STYLES[Math.floor(Math.max(0, index | 0) / 6) % 3];
 }
 

@@ -1,7 +1,8 @@
 // Small helpers for the hand-drawn UI: themed palette, sketchy boxes, buttons, chips and dialogs.
-import { DAY, NIGHT, pencilColor, paperTexture, drawBox, rgba, drawRing, drawShaded, drawWash, drawUnderline, inkOn } from './sketch.js';
+import { DAY, NIGHT, setPaper, pencilColor, paperTexture, drawBox, rgba, drawRing, drawShaded, drawWash, drawUnderline, inkOn } from './sketch.js';
 import { icon } from './icons.js';
 import { store } from './store.js';
+import { backgroundById } from './cosmetics.js';
 import { play as playSound, applyVolumes } from './sound.js';
 
 export const theme = { night: false, pal: DAY, accent: pencilColor(0, false) };
@@ -10,6 +11,8 @@ const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: 
 
 export function applyTheme() {
   const t = store.theme;
+  const bg = backgroundById(store.background);
+  setPaper(bg.day, bg.night);
   theme.night = t === 'night' || (t === 'system' && !!(darkQuery && darkQuery.matches));
   theme.pal = theme.night ? NIGHT : DAY;
   theme.accent = pencilColor(store.pencil, theme.night);

@@ -1,13 +1,9 @@
-// The little feelings a co-op player can send with a ping. Only the key goes over the wire;
+// The little feelings a co-op player can send with a ping (the list is in cosmetics.js). Only the key goes over the wire;
 // each phone draws its own glyph, and an unknown key (a newer app) shows as a plain ping.
-export const PING_KINDS = [
-  { key: 'heart', glyph: '❤️', word: 'Love it' },
-  { key: 'thumbs', glyph: '👍', word: 'Good' },
-  { key: 'question', glyph: '❓', word: 'Huh?' },
-  { key: 'cheer', glyph: '🎉', word: 'Yay' },
-  { key: 'think', glyph: '🤔', word: 'Hmm' },
-  { key: 'oops', glyph: '😅', word: 'Oops' },
-];
+import { PING_PACKS } from './cosmetics.js';
+
+/** Every feeling there is (the packs are bought in the store); each phone shows any of them when it arrives. */
+export const PING_KINDS = PING_PACKS.flatMap(p => p.kinds);
 
 /** The glyph for a key, or '' for a plain ping or anything unknown. */
 export function pingGlyph(key) {

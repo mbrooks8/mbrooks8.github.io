@@ -14,6 +14,8 @@ import { cleanCode } from './net.js';
 import { SHARE_BASE, shareText, defaultName, GROUP_SIZES, diffLabel, cap, factory } from './common.js';
 import { shapeChip } from './shapes.js';
 import { thumb } from './thumb.js';
+import { shopDialog, scribble } from './shop.js';
+import { ownedPencils, PENCIL_GOODS } from './cosmetics.js';
 import { leaderboardsOn, showLeaderboards } from './leaderboards.js';
 import { openGame } from './app.js';
 import { replayDialog } from './replay.js';
@@ -56,21 +58,6 @@ function tickBox(on) {
   return c;
 }
 
-/** A wavy pencil scribble in pencil [i]'s colour, for picking a pencil. */
-function scribble(i) {
-  const c = el('canvas', { 'aria-hidden': 'true', style: 'width:44px;height:30px;display:block' });
-  requestAnimationFrame(() => {
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
-    c.width = Math.round(44 * dpr); c.height = Math.round(30 * dpr);
-    const ctx = c.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const col = pencilColor(i, theme.night);
-    const pts = [[6, 22], [12, 8], [18, 20], [24, 8], [30, 18], [38, 9]];
-    for (let k = 0; k + 1 < pts.length; k++) pencilLine(ctx, pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], col, 3.4, i * 9 + k, 2);
-  });
-  return c;
-}
-
 export function settingsDialog(onDone) {
   const col = el('div', { class: 'col', style: 'gap:0' });
   let d;
@@ -93,13 +80,15 @@ export function settingsDialog(onDone) {
       toggle('No hints', 'noHints'),
       toggle('Plain numbers', 'plainNumbers'),
       el('hr', { class: 'divider' }),
-      el('div', { class: 'scribbles' }, ...PENCILS.map(([name], i) => {
+      el('div', { class: 'scribbles' }, ...ownedPencils(store.owned).map(i => {
+        const name = i < 100 ? PENCILS[i][0] : PENCIL_GOODS.find(g => g.pencil === i).name;
         const b = el('button', { type: 'button', class: 'pick', 'aria-label': name + ' pencil', 'aria-pressed': store.pencil === i ? 'true' : 'false' }, scribble(i));
         b.addEventListener('click', () => { store.pencil = i; applyTheme(); onThemeChange.forEach(f => f()); build(); });
         return store.pencil === i ? sk(b, { kind: 'ring', stroke: pencilColor(i, theme.night) }) : b;
       })),
       el('div', { class: 'picks around gap16' }, ...[['system', 'Auto'], ['day', 'Day'], ['night', 'Night']].map(([k, label]) =>
         pick(label, store.theme === k, () => { store.theme = k; applyTheme(); onThemeChange.forEach(f => f()); build(); }))),
+      el('div', { class: 'gap12 center' }, button('Store', () => shopDialog(build), { size: 17, kind: 'link' })),
       // EU/UK players can change their ad consent (production app only; Google says when it's needed).
       ...(privacyChoicesNeeded() ? [el('div', { class: 'gap12 center' }, button('Privacy choices', () => { d.close(); privacyChoices(); }, { size: 17, kind: 'link' }))] : []),
       ...(isApp ? [] : [el('p', { class: 'about gap16' },
@@ -163,9 +152,10 @@ export function statsDialog() {
     stat(el('span', { style: 'display:inline-flex;align-items:center' }, icon('candle', 22, 'var(--hint)'), String(store.dailyStreak)), 'streak', `best ${store.bestStreak}`),
     stat(best > 0 ? formatTime(best) : '–', 'best ' + Boards.label(sh, w, h), diffLabel(diff) + ', no hints'),
     stat(String(store.noHintWins), 'no-hint', 'solves'),
-    Object.assign(stat(store.points.toLocaleString('en-US'), 'points', 'solving earns more on bigger, harder boards'), { className: 'wide' }));
+    Object.assign(stat(store.points.toLocaleString('en-US'), 'points', `${store.balance.toLocaleString('en-US')} to spend`), { className: 'wide' }));
   const kids = [el('div', { class: 'stat3' }, ...cells)];
   // Leaderboards (Google Play Games, Android app only).
+  kids.push(el('div', { class: 'gap8' }, button('Store', () => shopDialog(), { size: 20, kind: 'outline' })));
   if (leaderboardsOn()) kids.push(el('div', { class: 'gap8' }, button('Leaderboards', () => showLeaderboards(), { size: 20, kind: 'outline', icon: 'chart' })));
   kids.push(el('hr', { class: 'divider gap8' }));
 
