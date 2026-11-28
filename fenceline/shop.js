@@ -73,7 +73,7 @@ export function shopDialog(onDone) {
 
   const build = () => {
     const kids = [
-      el('div', { class: 'center' }, text(`${store.balance.toLocaleString('en-US')} points to spend`, { size: 18, color: 'inkSoft' })),
+      el('div', { class: 'center' }, text(`${store.balance.toLocaleString('en-US')} point${store.balance === 1 ? '' : 's'} to spend`, { size: 18, color: 'inkSoft' })),
       el('div', { class: 'row gap6' }, ...[['pencils', 'Pencils'], ['paper', 'Paper'], ['pings', 'Pings']].map(([k, label]) =>
         chip(label, tab === k, () => { tab = k; selected = ''; build(); }))),
       shelf(),

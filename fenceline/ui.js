@@ -212,6 +212,9 @@ export function closeTopDialog() {
   if (d && d.cancelable) { d.close(); return true; }
   return !!d;
 }
+// A keyboard's Escape closes the card on top, like the phone's Back button.
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && openDialogs.length) { e.preventDefault(); closeTopDialog(); } });
+
 /** The dialog on top, or null. */
 export function topDialog() { return openDialogs[openDialogs.length - 1] || null; }
 export function closeAllDialogs() { [...openDialogs].forEach(d => d.close()); }

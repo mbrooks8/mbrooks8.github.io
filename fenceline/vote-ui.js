@@ -5,7 +5,8 @@ import { el, chip, sk } from './ui.js';
 
 /** ctx: { root, getRoom(), nameOf(p), setNote(s) }. Returns { ask(kind, go), onMessage(msg), dispose() }. */
 export function createVotes({ root, getRoom, nameOf, setNote }) {
-  const box = new VoteBox(globalThis.FENCELINE_VOTES || {}); // (tests shorten the pauses)
+  const opts = globalThis.FENCELINE_VOTES || {}; // (tests shorten the pauses)
+  const box = new VoteBox(opts), HIDE_MS = opts.hide ?? 1800; // how long the result stays on the card
   let card = null, countEl = null, titleEl = null, btns = null, endTimer = 0, hideTimer = 0, mine = false, go = null, myVote = null;
   const now = () => performance.now();
   const WORDS = { hint: 'a hint', clear: 'to clear mistakes' };
@@ -49,7 +50,7 @@ export function createVotes({ root, getRoom, nameOf, setNote }) {
     if (!card) return;
     btns.replaceChildren(el('span', { class: 'votemsg', text }));
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(hide, 1800);
+    hideTimer = setTimeout(hide, HIDE_MS);
   };
 
   /** The asker's phone: all votes in, or the time is up. */

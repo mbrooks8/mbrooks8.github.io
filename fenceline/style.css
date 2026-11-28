@@ -186,6 +186,7 @@ canvas.board {
 .tlrow .tool { min-width: 0; padding: 6px; color: var(--inkSoft); }
 .pick { background: none; border: 0; cursor: pointer; white-space: nowrap; padding: 6px 8px; min-height: 44px; color: var(--inkSoft); line-height: 1.2; }
 .pick.sel { color: var(--accent); }
+@media (max-width: 340px) { .pick { padding: 6px 4px; } } /* "more" stays on screen on 320px phones */
 .pick:focus-visible { outline: 2px dashed var(--hint); outline-offset: 2px; }
 .picks { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; }
 /* Small phones: tighter picks, so a row of sizes and "more" fits on one line (and wraps rather than spilling off). */

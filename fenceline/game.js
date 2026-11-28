@@ -440,6 +440,7 @@ export function showGame(opts) {
     if (!g) return;
     winShown = true;
     bankTime();
+    if (mode !== 'tutorial') { setNote(''); board.clearHighlights(false); } // the last hint's note and ring don't stay on the finished board
     g.elapsedMs = Math.round(g.elapsedMs);
     // The win show (loop glow, shading, confetti, tune); the card waits for it.
     // Co-op confetti comes in everyone's pencil colours.
@@ -493,7 +494,7 @@ export function showGame(opts) {
     const line = el('div', { class: 'line' }, `${formatTime(g.elapsedMs)} · ${g.hintsUsed === 0 ? 'no hints' : `${g.hintsUsed} hint${g.hintsUsed === 1 ? '' : 's'}`}`);
     if (mode === 'daily' && isTodaysDaily(g.puzzle)) line.append(' · ', icon('candle', 16, 'var(--hint)'), String(store.dailyStreak));
     kids.push(line);
-    if (earned > 0) kids.push(text(`+${earned.toLocaleString('en-US')} points`, { size: 16, color: 'inkSoft', cls: 'center' }));
+    if (earned > 0) kids.push(text(`+${earned.toLocaleString('en-US')} point${earned === 1 ? '' : 's'}`, { size: 16, color: 'inkSoft', cls: 'center' }));
     else if (repeat) kids.push(text('Already solved, so no points', { size: 15, color: 'inkSoft', cls: 'center' }));
     if (newBest) kids.push(text('★ New best! ★', { size: 17, bold: true, color: 'hint', cls: 'center' }));
     const links = [];
