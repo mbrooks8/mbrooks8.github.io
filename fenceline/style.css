@@ -190,6 +190,8 @@ canvas.board {
 .iconlink { background: none; border: 0; cursor: pointer; color: var(--ink); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; min-width: 56px; min-height: 48px; font-size: 14px; }
 .iconlink:focus-visible { outline: 2px dashed var(--hint); outline-offset: 2px; }
 .iconlink:active { opacity: .6; }
+.iconlink { position: relative; }
+.iconlink .pts { position: absolute; top: 0; right: -2px; font-size: 11px; line-height: 1; padding: 2px 5px; border-radius: 9px; background: var(--accentTint, var(--card)); color: var(--ink); border: 1.2px solid var(--inkSoft); }
 
 /* home */
 .home { min-height: 100%; display: flex; flex-direction: column; }

@@ -12,6 +12,7 @@ import { cleanCode } from './net.js';
 import { isTodaysDaily, isIOS, standalone, cap, factory } from './common.js';
 import { statsDialog, settingsDialog, joinDialog, codeDialog, playTogetherDialog, sizePicks } from './dialogs.js';
 import { learnDialog } from './learn.js';
+import { shopDialog } from './shop.js';
 import { showGame } from './game.js';
 import { offerApp } from './openapp.js';
 
@@ -27,6 +28,13 @@ export function setScreen(name, node, dispose) {
   app.replaceChildren(node);
   screen = { name, dispose };
   window.scrollTo(0, 0);
+}
+
+/** Store icon on the home row, with the points you can spend as a small number on it. Wardrobe is inside the store. */
+function storeButton(rebuild) {
+  const b = iconButton('bag', 'Store', () => shopDialog(rebuild), { aria: store.balance > 0 ? `Store, ${store.balance} points` : 'Store' });
+  if (store.balance > 0) b.prepend(el('span', { class: 'pts', 'aria-hidden': 'true', text: store.balance > 9999 ? '9999+' : String(store.balance) }));
+  return b;
 }
 
 export function showMenu() {
@@ -80,6 +88,7 @@ export function showMenu() {
     kids.push(el('div', { class: 'homefoot' },
       iconButton('hash', 'Code', codeDialog, { aria: 'Enter a code' }),
       iconButton('book', 'Learn', () => learnDialog()),
+      storeButton(build),
       iconButton('chart', 'Stats', statsDialog),
       iconButton('gear', 'Settings', () => settingsDialog(build))));
     col.replaceChildren(...kids);

@@ -1,6 +1,7 @@
-// The store: spend points on paper, ping emoji and pencils. Reached from Stats and Settings; no real money anywhere.
+// The store: spend points on paper, ping emoji and pencils. Reached from the home row, Stats and Settings; no real money anywhere.
 import { el, text, button, chip, sk, dialog, theme, applyTheme, onThemeChange } from './ui.js';
 import { store } from './store.js';
+import { wardrobeDialog } from './wardrobe.js';
 import { pencilColor, pencilLine, pencilFx, pencilAccent } from './sketch.js';
 import { drawFx, isAnimated } from './linefx.js';
 import { BACKGROUNDS, PING_PACKS, PENCIL_GOODS, canBuy, goodById } from './cosmetics.js';
@@ -85,6 +86,7 @@ export function shopDialog(onDone) {
     } else if (tab === 'pings') {
       kids.push(text('Hold Ping in co-op to send one.', { size: 15, color: 'inkSoft', cls: 'center' }));
     }
+    kids.push(el('div', { class: 'gap8 center' }, button('Wardrobe', () => { d.close(); wardrobeDialog(onDone); }, { size: 17, kind: 'link' })));
     col.replaceChildren(...kids);
   };
   build();
