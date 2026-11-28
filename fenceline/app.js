@@ -13,6 +13,7 @@ import { isTodaysDaily, isIOS, standalone, cap, factory } from './common.js';
 import { statsDialog, settingsDialog, joinDialog, codeDialog, playTogetherDialog, sizePicks } from './dialogs.js';
 import { learnDialog } from './learn.js';
 import { showGame } from './game.js';
+import { offerApp } from './openapp.js';
 
 const app = document.getElementById('app');
 
@@ -131,6 +132,8 @@ function boot() {
   if (hasLink) {
     // Keep the address clean, so a reload or a home-screen launch opens the menu.
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+    // Android Chrome: the link did not open the app by itself, so offer it.
+    if (params.has('p') || params.has('join')) offerApp(startUrl);
   }
   showMenu();
   if (!(hasLink && openLinkUrl(startUrl)) && !store.seenIntro) {

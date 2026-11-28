@@ -291,3 +291,6 @@ button.rowitem { cursor: pointer; min-height: 60px; }
 .home .picks { margin-top: 22px; }
 .home .picks + .picks { margin-top: 10px; }
 .home .more + .picks, .home .picks.around { margin-top: 26px; }
+.openapp { display:flex; align-items:center; justify-content:space-between; gap:10px; z-index:30; top:calc(8px + var(--sat)); position:fixed; }
+.openapp-go { color: inherit; font-weight:bold; text-decoration:underline; }
+.openapp-x { background:none; border:0; font-size:22px; color:inherit; }
