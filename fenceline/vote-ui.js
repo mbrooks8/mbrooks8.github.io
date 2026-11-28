@@ -9,6 +9,7 @@ export function createVotes({ root, getRoom, nameOf, setNote }) {
   let card = null, countEl = null, titleEl = null, btns = null, endTimer = 0, hideTimer = 0, mine = false, go = null, myVote = null;
   const now = () => performance.now();
   const WORDS = { hint: 'a hint', clear: 'to clear mistakes' };
+  const noNote = kind => `Not enough yes votes, so ${kind === 'clear' ? 'the mistakes stay' : 'no hint'} this time.`;
 
   const hide = () => { clearTimeout(hideTimer); if (card) card.remove(); card = null; root.classList.remove('voting'); };
   const tally = () => { if (countEl) countEl.textContent = `${box.yes} yes · ${box.no} no`; };
@@ -55,11 +56,11 @@ export function createVotes({ root, getRoom, nameOf, setNote }) {
   const resolve = () => {
     const v = box.cur, room = getRoom();
     if (!v || !mine || !room) return;
-    const pass = box.passes;
+    const pass = box.passes, kind = v.kind;
     room.broadcast({ t: 'VOTEEND', player: room.me, pass });
     const run = go; go = null;
     finish(pass, pass ? 'Yes wins!' : 'Not this time.');
-    if (pass) { if (run) run(); } else setNote('Not enough yes votes, so no hint this time.');
+    if (pass) { if (run) run(); } else setNote(noNote(kind));
   };
   const maybeFinish = () => { if (mine && box.everyoneVoted) resolve(); };
 
@@ -96,8 +97,9 @@ export function createVotes({ root, getRoom, nameOf, setNote }) {
         if (msg.player !== room.me && box.cast(msg.for, msg.player, msg.yes)) { tally(); maybeFinish(); }
       } else if (msg.t === 'VOTEEND') {
         if (box.cur && box.cur.player === msg.player && !mine) {
+          const kind = box.cur.kind;
           finish(msg.pass, msg.pass ? 'Yes wins!' : 'Not this time.');
-          if (!msg.pass) setNote('Not enough yes votes, so no hint this time.');
+          if (!msg.pass) setNote(noNote(kind));
         }
       }
     },

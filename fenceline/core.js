@@ -1318,9 +1318,9 @@ export class Game {
   clearMistakes() {
     const wrong = this.mistakes();
     if (!wrong.length) return 0;
-    this.beginStroke();
-    for (const e of wrong) this.record(e, Edge.UNKNOWN);
-    this.endStroke();
+    // Not an undo step: it counts as a hint, so Undo (or Redo) must not bring the wrong marks back.
+    for (const e of wrong) this.put(e, Edge.UNKNOWN);
+    this.redoStack.length = 0;
     this.hintsUsed++; this.clearsUsed++; // fixing mistakes for you counts as a hint
     return wrong.length;
   }

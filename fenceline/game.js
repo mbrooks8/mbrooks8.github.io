@@ -296,7 +296,7 @@ export function showGame(opts) {
     return r !== 'no' && !disposed;
   };
   const hint = async (voted = false) => {
-    if (!game || game.isSolved()) return;
+    if (!game || game.isSolved() || mp.countingDown) return; // versus: nobody starts before Go
     let h = game.findHint();
     if (!h) return;
     if (h.isFix) { // wrong marks first: circle them (free). Clear mistakes in the ⋯ menu erases them, and that counts as a hint.
@@ -324,7 +324,7 @@ export function showGame(opts) {
   /** Erases every wrong mark. It counts as a hint: in stats, the win card, the free-hint limit (a video after that) and co-op for everyone. */
   const clearMistakes = async (voted = false) => {
     const g = game;
-    if (!g || g.isSolved()) return;
+    if (!g || g.isSolved() || mp.countingDown) return;
     if (!g.mistakes().length) { setNote('No mistakes!'); return; }
     if (!voted && mp.shared()) { mp.ask('clear', () => clearMistakes(true)); return; }
     if (!await mayHint()) return;
@@ -559,6 +559,10 @@ export function showGame(opts) {
   showLoading();
 
   // What to play.
+  // Today's daily already under way: the Daily button picks it up where it was left (like Continue), not from scratch.
+  if (mode === 'daily' && !store.dailyDoneToday && store.savedMode === 'daily') {
+    try { const s = store.savedGame && Game.load(store.savedGame); if (s && !s.isSolved() && isTodaysDaily(s.puzzle)) mode = 'continue'; } catch (e) { /* start a fresh one */ }
+  }
   if (mode === 'continue') {
     let g = null;
     try { g = store.savedGame ? Game.load(store.savedGame) : null; } catch (e) { g = null; }

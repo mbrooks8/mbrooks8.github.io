@@ -113,7 +113,7 @@ export function createPlay(ctx) {
           startRound(p, same);
         } break;
         case 'PING': if (!(pingIn[msg.player] ||= new PingLimiter(0.7)).allow(performance.now())) break; board.showPing(msg.vertex, colorOf(msg.player), msg.x, msg.y, msg.kind); play('ping'); setNote(`${nameOf(msg.player)} says: ${pingGlyph(msg.kind) ? pingGlyph(msg.kind) : 'look here!'}`); break;
-        case 'PROG': progress.set(msg.player, msg.fraction); updatePlayers(); fillResults(); break;
+        case 'PROG': if (msg.player !== r.me) { progress.set(msg.player, msg.fraction); updatePlayers(); fillResults(); } break;
         case 'DONE':
           // Someone else got there first: a kind little "well played".
           if (msg.place === 1 && msg.player !== r.me && !finished.has(msg.player)) play('done');
@@ -188,6 +188,8 @@ export function createPlay(ctx) {
       clearTimeout(leftTimers.get(player)); leftTimers.delete(player);
       if (!returning || toldLeft.delete(player)) { laterNote(`${nameOf(player)} ${returning ? 'is back' : 'joined'}!`); play('join'); }
       if (mpMode === Mode.COOP && coop) coop.syncAll(); // catch them up on the shared board
+      // Versus: tell them how far everyone has got (otherwise they see 0% until each friend's next move).
+      else if (mpMode === Mode.VERSUS) for (const [p, f] of progress) if (p !== player && !finished.has(p)) r.broadcast({ t: 'PROG', player: p, fraction: Math.round(f * 1000) / 1000 });
       updatePlayers(); fillResults();
     },
     onDenied() { lobbyStatus = 'The host said not now, or the game is full.'; fillLobby(); },

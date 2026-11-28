@@ -180,10 +180,12 @@ canvas.board {
 .links { display: flex; justify-content: center; gap: 30px; margin-top: 8px; }
 .tlrow { display: flex; justify-content: center; gap: 22px; margin-top: 4px; }
 .tlrow .tool { min-width: 0; padding: 6px; color: var(--inkSoft); }
-.pick { background: none; border: 0; cursor: pointer; padding: 6px 8px; min-height: 44px; color: var(--inkSoft); line-height: 1.2; }
+.pick { background: none; border: 0; cursor: pointer; white-space: nowrap; padding: 6px 8px; min-height: 44px; color: var(--inkSoft); line-height: 1.2; }
 .pick.sel { color: var(--accent); }
 .pick:focus-visible { outline: 2px dashed var(--hint); outline-offset: 2px; }
-.picks { display: flex; justify-content: space-between; align-items: center; }
+.picks { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+/* Small phones: tighter picks, so a row of sizes and "more" fits on one line (and wraps rather than spilling off). */
+@media (max-width: 380px) { .picks .pick { padding-left: 3px; padding-right: 3px; } }
 .picks.around { justify-content: space-around; }
 .more { text-align: center; }
 .more .pick { font-size: 15px !important; min-height: 34px; }
