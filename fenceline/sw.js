@@ -45,7 +45,8 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== location.origin || url.pathname.endsWith('.apk')) return;
+  // The APK and the privacy page are not part of the game, so they skip the app shell.
+  if (url.origin !== location.origin || url.pathname.endsWith('.apk') || url.pathname.endsWith('/privacy.html')) return;
   // Pages (including ?p=CODE share links) all use the one app shell.
   const key = req.mode === 'navigate' ? new Request(new URL('./index.html', location.href)) : req;
   e.respondWith(networkFirst(req, key));

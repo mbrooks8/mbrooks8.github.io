@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fenceline privacy</title>
+<meta name="description" content="What Fenceline keeps, what it sends, and what it never does.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<style>
+  @font-face { font-family: "Coming Soon"; src: url("fonts/coming-soon.woff2") format("woff2"); font-display: swap; }
+  :root { --paper: #F5EDDC; --ink: #4A4641; --soft: #8A7F70; --accent: #B5533C; --card: #FBF6EA; --ruling: rgba(91,136,181,.165); }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #2A2520; --ink: #E8DFD0; --soft: #A89E8E; --accent: #E59A7E; --card: #35302A; --ruling: rgba(63,110,156,.13); }
+  }
+  html { background: var(--paper); }
+  body {
+    margin: 0; color: var(--ink); background-color: var(--paper);
+    background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--ruling) 31px 32px);
+    font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
+  .card { background: var(--card); border-radius: 6px; padding: 20px 22px; box-shadow: 0 2px 10px rgba(80,60,20,.15); }
+  h1, h2 { font-family: "Coming Soon", "Chalkboard SE", cursive; font-weight: 400; }
+  h1 { font-size: 32px; margin: 0 0 4px; }
+  h2 { font-size: 22px; margin: 26px 0 4px; color: var(--accent); }
+  p, li { margin: 6px 0; }
+  ul { padding-left: 22px; }
+  .soft { color: var(--soft); font-size: 15px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+<div class="card">
+<h1>Fenceline privacy</h1>
+<p class="soft">Last updated 28 November 2026. This covers the Fenceline app for Android and the web version at mbrooks8.github.io/fenceline.</p>
+
+<p>Fenceline is made by Michael Brooks. The short version: there are no accounts and we never see your games. The Android app shows ads from Google AdMob, and Google receives some information from your phone to show them (see Ads below).</p>
+
+<h2>What stays on your device</h2>
+<p>Your settings, stats, puzzle history, saved game and timelapses are kept on your device only. Fenceline does not send them anywhere. Uninstalling the app (or clearing the site's data in your browser) removes them.</p>
+
+<h2>Playing together</h2>
+<p>Play together is the only part of Fenceline that talks to other devices, and only while you are using it.</p>
+<ul>
+  <li><b>Same room (Android):</b> phones find each other directly over Bluetooth and Wi-Fi using Google Play services' Nearby Connections. No server is involved. Android asks for the Nearby devices permission (and Location on older Android versions) because that is how phones are found. Fenceline never reads or keeps your location.</li>
+  <li><b>Online:</b> players connect directly to each other. To help them find each other, the game uses PeerJS, a free public connection service, which sees your device's internet address and a random room ID while you play. If a direct connection isn't possible, game moves may pass through a relay server. Fenceline doesn't use these services for anything else.</li>
+  <li><b>What other players see:</b> the name you type (or your device's name if you leave it blank), your pencil colour, and your moves in that game. A random ID lets you get your seat back if you drop out.</li>
+</ul>
+
+<h2>Ads</h2>
+<p>The Android app shows ads from Google AdMob. The web version has no ads. To show and measure ads, and to prevent fraud, Google's ad software may collect:</p>
+<ul>
+  <li>your device's advertising ID (you can reset it or turn off personalised ads in your phone's Google settings),</li>
+  <li>your IP address, from which an approximate location can be worked out,</li>
+  <li>information about your device and the app, such as model, system, language and how you interact with the ads,</li>
+  <li>diagnostic and crash data from the ad software.</li>
+</ul>
+<p>This goes to Google, not to us, and is handled under <a href="https://policies.google.com/privacy">Google's privacy policy</a> and <a href="https://policies.google.com/technologies/partner-sites">how Google uses information from apps that use its services</a>. We only get anonymous totals, such as how many ads were shown.</p>
+<p>If you are in the European Economic Area, the UK or Switzerland, the app asks for your consent before personalised ads are shown. You can say no and keep playing. Only family-friendly ads are requested.</p>
+
+<h2>Sharing</h2>
+<p>When you share a puzzle, the link holds only the puzzle's shape, size, difficulty and number. You choose where it goes.</p>
+
+<h2>What Fenceline never does</h2>
+<ul>
+  <li>No accounts and no sign-in.</li>
+  <li>No analytics of our own.</li>
+  <li>We never sell your information. Apart from the ads above, nothing is shared with anyone.</li>
+</ul>
+
+<h2>Children</h2>
+<p>Fenceline is not directed at children under 13, and we do not knowingly collect information from anyone.</p>
+
+<h2>Changes and questions</h2>
+<p>If this ever changes, this page will be updated first. Questions are welcome at <a href="mailto:michael@afropenguin.net">michael@afropenguin.net</a>.</p>
+</div>
+</main>
+</body>
+</html>
