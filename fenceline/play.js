@@ -16,6 +16,7 @@ import { ownedPencils } from './cosmetics.js';
 import { play } from './sound.js';
 import { createVotes } from './vote-ui.js';
 import { GROUP_SIZES, JOIN_BASE, cap, diffLabel, factory, shareText, defaultName } from './common.js';
+import { timelapseRow } from './timelapse-row.js';
 import { leaveGame } from './app.js';
 
 export function createPlay(ctx) {
@@ -453,9 +454,10 @@ export function createPlay(ctx) {
     }));
   };
 
-  let mpEarned = 0;
-  const mpSolved = (g, showMs = 1300, earned = 0) => {
+  let mpEarned = 0, mpTl = null;
+  const mpSolved = (g, showMs = 1300, earned = 0, tl = null) => {
     mpEarned = earned;
+    mpTl = tl;
     const r = room;
     if (mpMode === Mode.VERSUS) {
       if (r && r.me >= 0) {
@@ -513,6 +515,8 @@ export function createPlay(ctx) {
       })));
       if (!g.isSolved()) kids.push(button('Keep drawing', () => { if (resultsD) resultsD.close(); resultsD = null; resultsCol = null; }, { size: 17 }));
     }
+    const tlr = g.isSolved() ? timelapseRow(mpTl) : null;
+    if (tlr) kids.push(tlr);
     const row = pencilRow(r);
     if (row) kids.push(row);
     if (r && wantsRematch.size) {

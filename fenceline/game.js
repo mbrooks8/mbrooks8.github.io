@@ -13,6 +13,7 @@ import { ownedPings } from './cosmetics.js';
 import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, JOIN_BASE, factory, isAndroid, keepAwake } from './common.js';
 import { createPlay } from './play.js';
 import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
+import { timelapseRow } from './timelapse-row.js';
 import { leaveGame, setScreen, showMenu } from './app.js';
 import * as ads from './ads.js';
 import { recordScores } from './leaderboards.js';
@@ -447,11 +448,13 @@ export function showGame(opts) {
     const code = PuzzleCode.of(g.puzzle);
     const daily = mode === 'daily' && isTodaysDaily(g.puzzle); // a daily finished after midnight is just a puzzle
     const kind = daily ? 'daily' : mode !== 'mp' ? '' : mp.mpMode === Mode.COOP ? 'coop' : 'versus';
-    if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind, keepRecording(g));
+    const tl = !alreadyDone && mode !== 'tutorial' && code ? keepRecording(g) : '';
+    if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind, tl);
+    const tlEntry = tl ? { code: code.toString(), tl, ms: g.elapsedMs } : null;
     if (mode === 'mp') { // Play together: versus gives every finisher the puzzle's points; co-op, everyone who drew part of the loop
       let got = 0;
       if (!alreadyDone) { board.buzz(40); got = mpPoints(g); store.addPoints(got); }
-      mp.mpSolved(g, showMs, got);
+      mp.mpSolved(g, showMs, got, tlEntry);
       return;
     }
     if (!alreadyDone && mode !== 'tutorial') ads.noteWin();
@@ -461,7 +464,7 @@ export function showGame(opts) {
     const earned = !alreadyDone && mode !== 'tutorial' ? recordScores(p, g.elapsedMs, g.hintsUsed, daily) : 0;
     store.savedGame = null;
     if (!alreadyDone) board.buzz(40);
-    setTimeout(() => { if (!disposed) showWin(g, best, earned); }, showMs);
+    setTimeout(() => { if (!disposed) showWin(g, best, earned, tlEntry); }, showMs);
   };
 
   /** Keeps this game's timelapse (co-op: with everyone's pencil and name); returns its id for the history. */
@@ -478,7 +481,7 @@ export function showGame(opts) {
   };
 
   /** The win card: a taped card at the bottom, so the shaded loop stays in view above it. */
-  const showWin = (g, newBest, earned = 0) => {
+  const showWin = (g, newBest, earned = 0, tlEntry = null) => {
     let d;
     const cheers = ['Lovely loop!', 'Neatly fenced!', 'All closed up!', 'Beautifully done!', "That's the one!"];
     const seed = g.puzzle.seed == null ? 0n : BigInt(g.puzzle.seed);
@@ -510,6 +513,8 @@ export function showGame(opts) {
     }
     if (mode !== 'tutorial' && PuzzleCode.of(g.puzzle)) links.push(button('Challenge a friend', () => sharePuzzle(g.elapsedMs), { size: 17, kind: 'link' }));
     links.push(button('Menu', () => { d.close(); leaveGame(); }, { size: 17, kind: 'link' }));
+    const tlr = timelapseRow(tlEntry);
+    if (tlr) kids.push(tlr);
     kids.push(el('div', { class: 'links' }, ...links));
     const unshrink = () => { root.classList.remove('won'); root.style.removeProperty('--wonPad'); };
     d = dialog(el('div', { class: 'col wincard', style: 'gap:6px' }, ...kids), { place: 'bottom', closeX: false, onClose: unshrink });

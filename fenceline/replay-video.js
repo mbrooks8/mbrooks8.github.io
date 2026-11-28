@@ -1,7 +1,7 @@
 // Saving a replay as a video: the replay is played once more while each frame is drawn onto a
 // picture-sized canvas (the board, the title, the clock, and who took a hint) and recorded.
 // Works where the browser can record a canvas (Chrome, Android's WebView, Safari 14.1+).
-import { canSaveFile, saveFile, isApp } from './native.js';
+import { canSaveFile, saveFile, shareSaved, canShareSaved, isApp } from './native.js';
 
 const W = 720, H = 840;
 
@@ -15,6 +15,13 @@ export function videoType() {
 
 /** Can the replay be saved as a video here? (Not in an app build that can't write files.) */
 export const canMakeVideo = () => !!videoType() && (!isApp || canSaveFile());
+
+/** Can the video be handed to a friend here (the phone's share sheet)? */
+export const canShareVideo = () => {
+  if (!canMakeVideo()) return false;
+  if (isApp) return canShareSaved();
+  return typeof File === 'function' && !!navigator.canShare && !!navigator.share;
+};
 
 function fit(ctx, src, x, y, w, h) {
   const k = Math.min(w / src.width, h / src.height);
@@ -82,4 +89,18 @@ export async function saveVideo(blob, name) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   return 'Video saved to your downloads.';
+}
+
+/** Shares the video: the phone's share sheet with the file (app: saved first, then the sheet), else a download. */
+export async function shareVideo(blob, name) {
+  if (isApp) {
+    const where = await saveFile(blob, name);
+    if (!where) return "Couldn't save the video.";
+    return shareSaved() ? `Saved to ${where}.` : `Saved to ${where}, but sharing didn't open.`;
+  }
+  const file = typeof File === 'function' ? new File([blob], name, { type: blob.type }) : null;
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], text: 'My Fenceline timelapse' }); return 'Shared.'; } catch (e) { if (e && e.name === 'AbortError') return ''; }
+  }
+  return saveVideo(blob, name);
 }

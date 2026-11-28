@@ -178,6 +178,8 @@ canvas.board {
 .btn-link, .btn-plain { display: inline-block; width: auto; min-height: 40px; padding: 6px 4px; color: var(--ink); -webkit-text-stroke: 0; }
 .btn-plain { color: var(--inkSoft); }
 .links { display: flex; justify-content: center; gap: 30px; margin-top: 8px; }
+.tlrow { display: flex; justify-content: center; gap: 22px; margin-top: 4px; }
+.tlrow .tool { min-width: 0; padding: 6px; color: var(--inkSoft); }
 .pick { background: none; border: 0; cursor: pointer; padding: 6px 8px; min-height: 44px; color: var(--inkSoft); line-height: 1.2; }
 .pick.sel { color: var(--accent); }
 .pick:focus-visible { outline: 2px dashed var(--hint); outline-offset: 2px; }

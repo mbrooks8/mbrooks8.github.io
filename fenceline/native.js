@@ -125,6 +125,11 @@ export async function saveFile(blob, name) {
   return String(call('saveEnd') || '');
 }
 
+/** Can the app hand the video it just saved to the share sheet? Older app builds can't. */
+export const canShareSaved = () => canSaveFile() && typeof native.shareSaved === 'function';
+/** Opens the share sheet for the video saveFile just wrote. Returns true when it opened. */
+export function shareSaved() { return canShareSaved() && call('shareSaved') === true; }
+
 // ---- events from the app ----
 
 const handlers = new Map();

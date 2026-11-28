@@ -8,10 +8,13 @@ import { BoardView } from './board.js';
 import { pencilColor, pencilStyle, pencilSwatch, pencilLine, pencilCircle, pencilFx, pencilAccent } from './sketch.js';
 import { factory, diffLabel } from './common.js';
 import { Recorder, Kind, findTimelapse, playbackTimes, hintEvents } from './timelapse.js';
-import { canMakeVideo, createVideoCapture, drawVideoFrame, saveVideo } from './replay-video.js';
+import { canMakeVideo, canShareVideo, createVideoCapture, drawVideoFrame, saveVideo, shareVideo } from './replay-video.js';
 
-/** Opens the timelapse of a history entry ({code, tl, ms}). Returns false when there isn't one. */
-export function replayDialog(entry) {
+/**
+ * Opens the timelapse of a history entry ({code, tl, ms}). Returns false when there isn't one.
+ * [opts.auto] 'save' or 'share' records the video straight away (the win card's Save and Share).
+ */
+export function replayDialog(entry, opts = {}) {
   const code = PuzzleCode.find(entry.code || '');
   const data = findTimelapse(entry.tl);
   if (!code || !data) return false;
@@ -27,11 +30,12 @@ export function replayDialog(entry) {
   // Where a hint was taken (a little lit bulb on the line) and, when one just happened, who took it.
   const note = el('div', { class: 'replaynote center', 'aria-live': 'polite' });
   const saveBtn = canMakeVideo() ? el('button', { type: 'button', class: 'tool', 'aria-label': 'Save as video' }, icon('download', 24)) : null;
+  const shareBtn = canShareVideo() ? el('button', { type: 'button', class: 'tool', 'aria-label': 'Share the video' }, icon('share', 24)) : null;
   const col = el('div', { class: 'col replaycard', style: 'gap:8px' },
-    el('div', { class: 'boardframe' }, canvas, loading), el('div', { class: 'replaybar' }, playBtn, line, clock, ...(saveBtn ? [saveBtn] : [])), note, who);
+    el('div', { class: 'boardframe' }, canvas, loading), el('div', { class: 'replaybar' }, playBtn, line, clock, ...(saveBtn ? [saveBtn] : []), ...(shareBtn ? [shareBtn] : [])), note, who);
 
   let board = null, game = null, rec = null, at = [], total = 0, hints = [], status = '', cap = null;
-  let idx = 0, pos = 0, playing = false, ended = false, raf = 0, lastFrame = 0, closed = false;
+  let idx = 0, pos = 0, playing = false, ended = false, raf = 0, lastFrame = 0, closed = false, how = 'save';
   const d = dialog(col, { onClose: () => { closed = true; if (cap) cap.cancel(); cancelAnimationFrame(raf); if (board) board.destroy(); } });
 
   const setIcon = name => { ring.querySelector('svg').replaceWith(icon(name, 26)); playBtn.setAttribute('aria-label', { play: 'Play', pause: 'Pause', restart: 'Watch again' }[name]); };
@@ -112,19 +116,22 @@ export function replayDialog(entry) {
     status = 'Saving…'; showNote();
     const blob = await c.stop();
     const name = `fenceline-${new Date().toISOString().slice(0, 10)}-${code.width}x${code.height}.${c.ext}`;
-    try { status = await saveVideo(blob, name); } catch (e) { status = "Couldn't save the video."; }
-    cap = null; saveBtn.disabled = false;
+    try { status = how === 'share' ? await shareVideo(blob, name) : await saveVideo(blob, name); } catch (e) { status = "Couldn't save the video."; }
+    cap = null; if (saveBtn) saveBtn.disabled = false; if (shareBtn) shareBtn.disabled = false;
     if (!closed) showNote();
   };
-  const makeVideo = () => {
+  const makeVideo = (kind = 'save') => {
     if (!game || cap) return;
+    how = kind;
     pause(); ended = false; rewind(); showAt(0);
     status = 'Recording… keep this open.';
     try { cap = createVideoCapture(videoFrame); cap.start(); } catch (e) { cap = null; status = "Couldn't make a video here."; showNote(); return; }
-    saveBtn.disabled = true;
+    if (saveBtn) saveBtn.disabled = true;
+    if (shareBtn) shareBtn.disabled = true;
     start();
   };
-  if (saveBtn) saveBtn.addEventListener('click', makeVideo);
+  if (saveBtn) saveBtn.addEventListener('click', () => makeVideo('save'));
+  if (shareBtn) shareBtn.addEventListener('click', () => makeVideo('share'));
 
   const finish = () => {
     playing = false; ended = true;
@@ -184,6 +191,7 @@ export function replayDialog(entry) {
     ({ at, total } = playbackTimes(rec.moves));
     hints = hintEvents(rec.moves);
     showAt(0);
+    if ((opts.auto === 'save' && saveBtn) || (opts.auto === 'share' && shareBtn)) { makeVideo(opts.auto); return; }
     setTimeout(() => { if (!closed && !playing && pos === 0) start(); }, 400);
   }, () => { loading.textContent = "Oops, that puzzle wouldn't draw."; });
   return d;
