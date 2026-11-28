@@ -40,10 +40,11 @@ export function showMenu() {
     const daily = el('button', { type: 'button', class: 'daily', 'aria-label': 'Daily puzzle' + (streak ? `, streak ${streak}` : '') + (store.dailyDoneToday ? ', done today' : '') },
       icon('sun', 30, 'var(--hint)', 1.7),
       el('span', { class: 'grow', text: 'Daily puzzle' }),
+      store.dailyDoneToday ? el('span', { class: 'what', text: 'back tomorrow' }) : '',
       store.dailyDoneToday ? icon('check', 20, 'var(--done)', 2.2) : '',
       streak > 0 ? el('span', { class: 'streak' }, icon('candle', 18, 'var(--hint)'), String(streak)) : '',
       icon('arrow', 22, 'var(--accent)'));
-    daily.addEventListener('click', () => openGame({ mode: 'daily' }));
+    daily.addEventListener('click', () => { if (!store.dailyDoneToday) openGame({ mode: 'daily' }); }); // done: locked until tomorrow
     kids.push(el('div', { class: 'gap22' }, sk(daily, { stroke: 'inkSoft', width: 1.8 })));
 
     // Continue, a quiet line under the daily.

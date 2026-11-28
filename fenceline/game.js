@@ -150,6 +150,8 @@ export function showGame(opts) {
   const showTrouble = e => { loading.hidden = false; loading.textContent = `This game wouldn't open (${e && e.message ? e.message : e}). Go back and start a new one.`; };
   board.onError = showTrouble;
 
+  const dailyLocked = p => isTodaysDaily(p) && store.dailyDoneToday;
+  const dailyDoneNote = () => { loading.hidden = false; board.locked = true; loading.textContent = "You finished today's daily. A new one comes tomorrow!"; };
   const showLoading = () => { loading.hidden = false; board.locked = true; };
 
   const refresh = () => {
@@ -366,7 +368,8 @@ export function showGame(opts) {
     // With "No hints" on it is Check, which only looks for mistakes.
     item(hintsOff() ? 'check' : 'bulb', hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint(), 'var(--hint)', 'shows the next move');
     item('eraser', 'Clear mistakes', clearMistakes, undefined, 'erases marks that are wrong');
-    if (!multi) item('restart', 'Start over', confirmReset, undefined, 'wipes the board');
+    // A finished daily stays finished: no starting it over for another go.
+    if (!multi && !(game && dailyLocked(game.puzzle))) item('restart', 'Start over', confirmReset, undefined, 'wipes the board');
     col.append(el('hr', { class: 'divider', style: 'margin:6px 0' }));
     if (multi && mp.room && !mp.nearby && mp.room.roomId) item('invite', 'Invite', () => {
       const c = mp.room.roomId.toUpperCase();
@@ -538,6 +541,7 @@ export function showGame(opts) {
       }));
     } else { mode = 'free'; showMenu(); }
   } else if (mode === 'daily') {
+    if (store.dailyDoneToday) { dailyDoneNote(); return; }
     factory.request(10, 10, 'MEDIUM', dailySeed(new Date()), Shape.SQUARE).then(p => start(new Game(p)), err => { loading.textContent = "Oops, today's puzzle wouldn't draw."; console.error(err); });
   } else if (mode === 'tutorial') {
     startTutorial(step, !opts.noGoal);
@@ -546,6 +550,7 @@ export function showGame(opts) {
   } else if (mode === 'code') {
     const code = PuzzleCode.find(opts.code || '');
     if (!code) { showMenu(); return; }
+    if (dailyLocked(code)) { dailyDoneNote(); return; } // the daily's own code can't be used to play it again
     if (isAndroid && !isApp) {
       const href = `intent://p/${encodeURIComponent(code)}#Intent;scheme=fenceline;package=com.fenceline.app;end`;
       appLink.replaceChildren('Got the Android app? ', el('a', { href }, 'Open it there'));
