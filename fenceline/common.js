@@ -17,8 +17,6 @@ export const isAndroid = /Android/i.test(navigator.userAgent);
 export const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 export const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 export const cap = s => s.charAt(0) + s.slice(1).toLowerCase();
-/** The day a daily puzzle belongs to (its seed is yyyymmdd). */
-export const dailyDate = p => { const n = Number(p.seed || 0); return n > 19000000 ? new Date(Math.floor(n / 10000), Math.floor(n / 100) % 100 - 1, n % 100) : new Date(); };
 /** True when [p] is today's daily puzzle (a daily left over from an earlier day is just a puzzle now). */
 export const isTodaysDaily = p => !!p && p.seed != null && BigInt(p.seed) === dailySeed(new Date()) && p.shape === Shape.SQUARE && p.width === 10 && p.height === 10;
 export const diffLabel = d => (d || '').toLowerCase();

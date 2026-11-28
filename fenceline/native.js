@@ -84,11 +84,6 @@ export async function keepScreenOn(on) {
   } catch (e) { wakeLock = null; }
 }
 
-export function openExternal(url) {
-  if (isApp) { call('openExternal', url); return; }
-  window.open(url, '_blank', 'noopener');
-}
-
 // ---- Google Play Games leaderboards (Android app only; the web has none) ----
 
 /** True when this app build has leaderboards switched on (Play Games ids filled in). */
@@ -154,8 +149,6 @@ export function setBackHandler(fn) { backHandler = fn; }
 window.fencelineBack = () => {
   try { return !!(backHandler && backHandler()); } catch (e) { console.error(e); return false; }
 };
-export function exitApp() { call('exitApp'); }
-
 // ---- links ----
 
 /**

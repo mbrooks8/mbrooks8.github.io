@@ -155,8 +155,6 @@ export function iconButton(name, label, onClick, { size = 26, aria = null, cls =
   return b;
 }
 
-export function setLabel(b, label) { (b.querySelector('.lbltext') || b.querySelector('.lbl')).textContent = label; }
-
 export function chip(label, selected, onClick, { size = 16 } = {}) {
   const b = el('button', { type: 'button', class: 'chip' + (selected ? ' sel' : '') });
   b.append(el('span', { class: 'lbl', text: label }));
