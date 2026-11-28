@@ -204,6 +204,11 @@ export function createPlay(ctx) {
 
   const parsePuzzleText = t => roomParse(t);
 
+  /** What the open-rooms list says about this room (asked fresh each time someone looks). */
+  const openCard = () => ({
+    code: room ? room.roomId : roomCode, coop: mpMode === Mode.COOP, board: boardLabelOf(mpShape, mpW, mpH, mpDiff),
+    host: room ? (room.names[room.me] || 'Host') : 'Host', players: room ? Math.max(1, room.here.length) : 1, playing: !!room && room.round > 0,
+  });
   const setupText = () => `${mpMode}|${mpShape.name}|${mpW}|${mpH}|${mpDiff}`;
   /** A new host carries on with the first host's settings (for the next puzzle). */
   const loadSetup = setup => {
@@ -227,6 +232,8 @@ export function createPlay(ctx) {
   const openLink = async role => {
     link = nearby ? new NearbyLink() : new Link();
     link.ui = linkUi;
+    // An Open room shows up in the open-rooms list; whoever takes over hosting keeps it listed (if they joined from that list).
+    if (!nearby && ((role === 'host' && opts.open) || (role === 'join' && opts.fromList))) link.listInfo = openCard;
     if (window.__fenceline) window.__fenceline.link = link;
     lobbyStatus = nearby ? 'Starting Nearby…' : role === 'host' ? 'Making a room…' : `Looking for room ${roomCode.toUpperCase()}…`;
     showLobby();

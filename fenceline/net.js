@@ -5,6 +5,7 @@
 // the hosting term, which goes up each time hosting moves. So when a host leaves, everyone knows
 // the id the next host will take, and reconnects to it.
 import { Room } from './room.js';
+import { Listing, findOpenRooms } from './openrooms.js';
 
 const PREFIX = 'fenceline-v1-';
 const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
@@ -62,6 +63,8 @@ export class Link {
     this.room = null; this.peer = null; this.hostPeer = null;
     this.conns = new Map(); // host: peer id -> DataConnection
     this.hostConn = null;   // guest: the connection to the host
+    this.listInfo = null;   // set to a function to show this room in the open-rooms list (Open rooms only)
+    this.listing = null;
     this.ui = {};
     this.closed = false;
     this.findTimer = 0;
@@ -118,8 +121,21 @@ export class Link {
     if (!this.hostPeer) throw new Error("Couldn't make a room. Try again.");
     this.listen(this.hostPeer);
     this.startHealing();
+    this.startListing();
     return room;
   }
+
+  /** Open room: takes a place in the open-rooms list (best effort; private rooms never do). */
+  async startListing() {
+    if (!this.listInfo || this.listing || this.closed) return;
+    const Peer = await loadPeerJS().catch(() => null);
+    if (!Peer || this.closed || this.listing) return;
+    const l = this.listing = new Listing(Peer, () => this.listInfo());
+    if (!(await l.open())) { l.close(); if (this.listing === l) this.listing = null; }
+  }
+
+  /** Guest: the rooms open to anyone right now (onRoom hears each one as it answers). */
+  static async findOpen(opts) { return findOpenRooms(await loadPeerJS(), opts); }
 
   listen(p) {
     p.on('connection', (conn) => {
@@ -274,6 +290,7 @@ export class Link {
       this.conns.clear();
       const hp = this.hostPeer; this.hostPeer = null;
       try { if (hp) hp.destroy(); } catch (_) {}
+      if (this.listing) { this.listing.close(); this.listing = null; }
       room.isHost = false; room.term = got.t; room.waitingFor = -1;
       room.peerPlayer.clear(); room.pending.clear();
       this.attachHost(got.conn);
@@ -369,6 +386,7 @@ export class Link {
         this.hostPeer = await openPeer(Peer, hostId(room.roomId, room.term));
         this.listen(this.hostPeer);
         this.startHealing();
+        this.startListing();
         this.emit('onStatus', '');
         return;
       } catch (e) {
@@ -399,6 +417,7 @@ export class Link {
     try { if (this.hostConn) this.hostConn.close(); } catch (_) {}
     try { if (this.hostPeer) this.hostPeer.destroy(); } catch (_) {}
     try { if (this.peer) this.peer.destroy(); } catch (_) {}
+    if (this.listing) { this.listing.close(); this.listing = null; }
   }
 }
 

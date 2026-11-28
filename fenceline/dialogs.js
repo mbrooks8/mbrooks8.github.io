@@ -10,7 +10,7 @@ import { pencilLine, drawBox } from './sketch.js';
 import { icon } from './icons.js';
 import { applyVolumes, unlockSound } from './sound.js';
 import { Mode } from './room.js';
-import { cleanCode } from './net.js';
+import { cleanCode, Link } from './net.js';
 import { SHARE_BASE, shareText, defaultName, GROUP_SIZES, diffLabel, cap, factory } from './common.js';
 import { shapeChip } from './shapes.js';
 import { thumb } from './thumb.js';
@@ -205,6 +205,7 @@ export function playTogetherDialog() {
   let size = store.lastSize;
   let diff = store.lastDifficulty;
   let showAll = false;
+  let open = store.mpOpen;
   // In the Android app, also offer same-room play over Nearby (no internet).
   let via = isApp ? store.mpVia : 'online';
   const name = el('input', { class: 'codein namein', type: 'text', placeholder: 'Your name', 'aria-label': 'Your name', maxlength: '20', autocomplete: 'nickname', spellcheck: 'false' });
@@ -229,6 +230,11 @@ export function playTogetherDialog() {
       ...sizePicks(sizes, size, s => { size = s; fill(); }, () => showAll, v => { showAll = v; fill(); }),
       el('div', { class: 'picks around gap12' }, ...['EASY', 'MEDIUM', 'HARD'].map(dd => pick(cap(dd), diff === dd, () => { diff = dd; fill(); }))),
     );
+    // Online rooms can be open (listed for anyone to join) or private (code only). Same-room play is always visible to phones nearby.
+    if (via === 'online') kids.push(el('div', { class: 'picks around gap12' },
+      pick('Open room', open, () => { open = true; store.mpOpen = true; fill(); }),
+      pick('Private', !open, () => { open = false; store.mpOpen = false; fill(); })),
+      text(open ? 'Shows up in the open rooms list.' : 'Only people with your code can join.', { size: 14, color: 'inkSoft', cls: 'center' }));
     const go = role => {
       saveName();
       d.close();
@@ -238,7 +244,7 @@ export function playTogetherDialog() {
         return;
       }
       const [w, h] = size.split('x').map(Number);
-      openGame({ mode: 'mp', role: 'host', mpMode: coop ? Mode.COOP : Mode.VERSUS, w, h, d: diff, shape, via });
+      openGame({ mode: 'mp', role: 'host', mpMode: coop ? Mode.COOP : Mode.VERSUS, w, h, d: diff, shape, via, open: via === 'online' && open });
     };
     kids.push(el('div', { class: 'row gap16' },
       button('Host', () => go('host'), { size: 22, kind: 'primary' }),
@@ -266,13 +272,40 @@ export function joinDialog(prefill) {
     openGame({ mode: 'mp', role: 'join', code: c });
   };
   for (const i of [code, name]) i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  // Open rooms: hosts who left "Open room" on show up here (private rooms never do).
+  const rooms = el('div', { class: 'col' });
+  const stop = new AbortController();
+  let scanning = false;
+  const roomButton = r => button(`${r.coop ? 'Co-op' : 'Versus'} · ${r.board} · ${r.host} (${r.players}${r.playing ? ', playing' : ''})`, () => {
+    store.playerName = name.value.trim();
+    stop.abort(); d.close();
+    openGame({ mode: 'mp', role: 'join', code: r.code, fromList: true });
+  }, { size: 16, kind: 'outline' });
+  const look = () => {
+    if (scanning) return;
+    scanning = true;
+    const found = [];
+    const note = text('Looking for open rooms…', { size: 15, color: 'inkSoft', cls: 'center' });
+    const draw = () => rooms.replaceChildren(...found.map(roomButton), note);
+    draw();
+    Link.findOpen({ signal: stop.signal, onRoom: r => { if (!stop.signal.aborted) { found.push(r); draw(); } } }).then(() => {
+      note.textContent = found.length ? '' : 'No open rooms right now.';
+    }, e => { note.textContent = (e && e.message) || "Couldn't look for rooms."; }).finally(() => {
+      scanning = false;
+      if (stop.signal.aborted) return;
+      note.after(button('Look again', look, { size: 15, kind: 'outline' }));
+    });
+  };
   d = dialog(el('div', { class: 'col' },
     text('Room code from your friend', { size: 15, color: 'inkSoft', cls: 'center' }),
     sk(el('div', { class: 'field' }, code), { kind: 'under', stroke: 'ink' }),
     sk(el('div', { class: 'field' }, name), { kind: 'under', stroke: 'inkSoft' }),
     error,
     el('div', { class: 'gap12' }, button('Join', go, { size: 22, kind: 'primary' })),
-  ));
+    el('hr', { class: 'divider' }),
+    rooms,
+  ), { onClose: () => stop.abort() });
+  look();
   setTimeout(() => (code.value ? name : code).focus(), 50);
 }
 

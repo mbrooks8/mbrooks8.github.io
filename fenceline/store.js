@@ -67,6 +67,8 @@ export const store = {
   get adLast() { return int('adLast', 0); }, set adLast(v) { set('adLast', v); },
 
   /** Android app: how Play together connects, 'online' or 'nearby'. */
+  /** Online rooms you host: shown in everyone's open-rooms list (default) or private (code only). */
+  get mpOpen() { return get('mpOpen', 'true') !== 'false'; }, set mpOpen(v) { set('mpOpen', v ? 'true' : 'false'); },
   get mpVia() { return get('mpVia', 'online') === 'nearby' ? 'nearby' : 'online'; }, set mpVia(v) { set('mpVia', v === 'nearby' ? 'nearby' : 'online'); },
   get playerName() { return (get('playerName', '') || '').slice(0, 20); }, set playerName(v) { set('playerName', String(v || '').slice(0, 20)); },
   /** Random id for this browser, so a host can give a returning player their seat back. */
