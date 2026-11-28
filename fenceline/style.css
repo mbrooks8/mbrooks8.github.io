@@ -228,6 +228,9 @@ canvas.board {
 .tick { display: flex; align-items: center; gap: 14px; width: 100%; background: none; border: 0; cursor: pointer; padding: 8px 0; font-size: 19px; color: var(--ink); text-align: left; min-height: 44px; }
 .tick.off { color: var(--inkSoft); }
 .tick canvas { width: 24px; height: 24px; flex: none; }
+.volrow { display: flex; align-items: center; gap: 14px; padding: 2px 0 2px 38px; font-size: 17px; color: var(--inkSoft); min-height: 40px; }
+.volrow span { width: 64px; flex: none; }
+.vol { flex: 1; min-width: 0; accent-color: var(--ink); height: 28px; }
 .scribbles { display: flex; justify-content: space-around; align-items: center; }
 .scribbles .pick { padding: 4px 6px; }
 

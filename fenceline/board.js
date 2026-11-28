@@ -18,6 +18,7 @@ export class BoardView {
     this.plainNumbers = false;
     this.locked = false;
     this.onChanged = null;
+    this.onError = null; // a frame that couldn't be drawn (game.js says so on screen)
     this.guideEdges = new Set();
     this.onlyGuided = false;
     this.onOffGuide = null;
@@ -53,9 +54,17 @@ export class BoardView {
     this.game = g;
     this.solvedReveal = g && g.isSolved() ? 1 : 0;
     this.revealStart = 0;
-    this.loopPath = null; this.traceStart = 0; this.confetti = [];
+    this.clearCelebration();
     this.clearHighlights(false);
     this.resetZoom();
+  }
+
+  /** Forgets the win show (shading, glow, confetti), e.g. when the puzzle is started over. */
+  clearCelebration() {
+    this.solvedReveal = this.game && this.game.isSolved() ? 1 : 0;
+    this.revealStart = 0;
+    this.loopPath = null; this.traceStart = 0; this.confetti = []; this.confettiStart = 0;
+    this.invalidate();
   }
 
   destroy() { this.ro.disconnect(); this.game = null; }
@@ -118,7 +127,10 @@ export class BoardView {
 
   invalidate() {
     if (this.frame) return;
-    this.frame = requestAnimationFrame(() => { this.frame = 0; this.draw(); });
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      try { this.draw(); } catch (e) { console.error(e); if (this.onError) this.onError(e); }
+    });
   }
 
 }

@@ -3,7 +3,7 @@
 import { isApp } from './native.js';
 import { Edge, Shape, Boards, dailySeed, PuzzleCode, Tutorial, Game } from './core.js';
 import { store, formatTime } from './store.js';
-import { el, onThemeChange, dialog, theme, text, button, sk } from './ui.js';
+import { el, onThemeChange, dialog, theme, text, button, sk, volumeSlider } from './ui.js';
 import { icon } from './icons.js';
 import { BoardView } from './board.js';
 import { Mode } from './room.js';
@@ -12,12 +12,15 @@ import { isTodaysDaily, SHARE_BASE, shareText, diffLabel, JOIN_BASE, factory, is
 import { createPlay } from './play.js';
 import { Recorder, Kind, keepTimelapse, newTimelapseId } from './timelapse.js';
 import { leaveGame, setScreen, showMenu } from './app.js';
+import * as ads from './ads.js';
 
 export function showGame(opts) {
   let mode = opts.mode, step = opts.step || 0;
-  let game = null, resumedAt = 0, winShown = false, pendingFix = null, guide = [], guideAt = 0, disposed = false;
+  let game = null, resumedAt = 0, winShown = false, winCard = null, pendingFix = null, guide = [], guideAt = 0, disposed = false;
   // Every move, for the timelapse in Stats (timelapse.js). resumeTl: the saved one, when continuing.
   let rec = null, resumeTl = null;
+  // Hints taken on this puzzle, and videos watched for more (ads.js: only the production app limits hints).
+  let hintsTaken = 0, hintVideos = 0;
   const hintsOff = () => store.noHints && mode !== 'tutorial';
 
   // Layout.
@@ -86,7 +89,7 @@ export function showGame(opts) {
   // Timer and saving.
   const bankTime = () => {
     const now = performance.now();
-    if (game && !game.isSolved() && resumedAt > 0 && !mp.countingDown && document.visibilityState === 'visible') game.elapsedMs += Math.max(0, now - resumedAt);
+    if (game && !game.isSolved() && resumedAt > 0 && !mp.countingDown && !ads.adPlaying() && document.visibilityState === 'visible') game.elapsedMs += Math.max(0, now - resumedAt);
     resumedAt = now;
   };
   const updateTimer = () => { if (!game) return; bankTime(); timerText.textContent = formatTime(game.elapsedMs); };
@@ -116,6 +119,9 @@ export function showGame(opts) {
   const onTheme = () => { applySettings(); };
   onThemeChange.add(onTheme);
 
+  const showTrouble = e => { loading.hidden = false; loading.textContent = `This game wouldn't open (${e && e.message ? e.message : e}). Go back and start a new one.`; };
+  board.onError = showTrouble;
+
   const showLoading = () => { loading.hidden = false; board.locked = true; };
 
   const refresh = () => {
@@ -139,6 +145,8 @@ export function showGame(opts) {
     board.locked = false;
     winShown = false;
     game = g;
+    hintsTaken = 0; hintVideos = 0;
+    ads.banner(mode !== 'tutorial' && mode !== 'mp');
     rec = resumeTl && resumeTl.seen.length === g.grid.edgeCount ? resumeTl : new Recorder(g.grid.edgeCount);
     resumeTl = null;
     g.autoCross = store.autoCross;
@@ -231,7 +239,16 @@ export function showGame(opts) {
     let n = 0; for (const h of game.hinted) if (h) n++;
     game.hintsUsed = n;
   };
-  const hint = () => {
+  /** Production app only: after the free hints, a short video for each extra one (never blocks if none loads). */
+  const mayHint = async () => {
+    if (mode === 'tutorial' || ads.hintFree(hintsTaken, hintVideos)) return true;
+    const r = await ads.offerHintVideo();
+    if (r === 'earned') hintVideos++;
+    return r !== 'no' && !disposed;
+  };
+  const hint = async () => {
+    if (!game || game.isSolved() || !game.findHint()) return;
+    if (!await mayHint()) return;
     const g = game;
     if (!g || g.isSolved()) return;
     const h = g.findHint();
@@ -239,6 +256,7 @@ export function showGame(opts) {
     if (h.isFix) {
       const same = pendingFix && pendingFix.length === h.wrong.length && h.wrong.every(e => pendingFix.includes(e));
       if (same) {
+        hintsTaken++;
         const n = g.clearMistakes();
         sharedHints();
         play('erase');
@@ -255,6 +273,7 @@ export function showGame(opts) {
       return;
     }
     pendingFix = null;
+    hintsTaken++;
     g.applyHint(h);
     play('hint');
     board.showHint(h.edge, h.focusCell, h.focusVertex);
@@ -316,6 +335,8 @@ export function showGame(opts) {
       if (p) newPuzzle(p.width, p.height, p.difficulty || 'EASY', null, p.shape);
     });
     if (multi) item('leave', 'Leave game', () => leaveGame());
+    // Volume, shared with Settings (hidden while Sound is off).
+    if (store.sound) col.append(el('hr', { class: 'divider', style: 'margin:6px 0' }), volumeSlider('Effects', 'sfxVolume', 'fence'), volumeSlider('Music', 'musicVolume'));
     d = dialog(col, { place: 'note' });
   };
 
@@ -336,6 +357,8 @@ export function showGame(opts) {
             return;
           }
           if (game) game.reset();
+          winShown = false; board.clearCelebration();
+          if (winCard) { winCard.close(); winCard = null; } // the win card goes with the win, and finishing again plays the show again
           board.clearHighlights(); pendingFix = null;
           if (mp.shared() && mp.coop) mp.coop.syncAll(); // host also sends the whole board, so everyone lands on the same blank board
           setNote('');
@@ -359,6 +382,7 @@ export function showGame(opts) {
     const kind = daily ? 'daily' : mode !== 'mp' ? '' : mp.mpMode === Mode.COOP ? 'coop' : 'versus';
     if (!alreadyDone && mode !== 'tutorial' && code) store.addHistory(code.toString(), g.elapsedMs, g.hintsUsed, kind, keepRecording(g));
     if (mode === 'mp') { if (!alreadyDone) board.buzz(40); mp.mpSolved(g, showMs); return; }
+    if (!alreadyDone && mode !== 'tutorial') ads.noteWin();
     const p = g.puzzle;
     const size = Boards.key(p.shape, p.width, p.height);
     const best = !alreadyDone && mode !== 'tutorial' ? store.recordWin(size, p.difficulty || 'EASY', g.elapsedMs, g.hintsUsed, daily) : false;
@@ -402,8 +426,10 @@ export function showGame(opts) {
         kids.push(el('div', { class: 'gap8' }, button('Play a 3×3', () => { d.close(); newPuzzle(3, 3, 'EASY', null, Shape.SQUARE); }, { size: 21, kind: 'primary' })));
       }
     } else if (mode === 'free') {
-      kids.push(el('div', { class: 'gap12' }, button('Next puzzle', () => {
+      kids.push(el('div', { class: 'gap12' }, button('Next puzzle', async () => {
         d.close();
+        await ads.betweenPuzzles(); // now and then a short video (production app only)
+        if (disposed) return;
         const p = g.puzzle;
         newPuzzle(p.width, p.height, p.difficulty || 'EASY', null, p.shape);
       }, { size: 21, kind: 'primary' })));
@@ -413,6 +439,7 @@ export function showGame(opts) {
     kids.push(el('div', { class: 'links' }, ...links));
     const unshrink = () => { root.classList.remove('won'); root.style.removeProperty('--wonPad'); };
     d = dialog(el('div', { class: 'col wincard', style: 'gap:6px' }, ...kids), { place: 'bottom', closeX: false, onClose: unshrink });
+    winCard = d;
     // Make room: the board shrinks to sit above the card.
     requestAnimationFrame(() => {
       const card = document.querySelector('.overlay.place-bottom .card');
@@ -435,6 +462,7 @@ export function showGame(opts) {
 
   setScreen('game', root, () => {
     disposed = true;
+    ads.banner(false);
     save();
     clearInterval(ticker);
     document.removeEventListener('visibilitychange', onVis);
@@ -458,8 +486,14 @@ export function showGame(opts) {
     step = store.tutorialStep;
     const oldLesson = mode === 'tutorial' && (step < 0 || step >= Tutorial.steps.length || !g || g.puzzle.encode(false) !== Tutorial.puzzle(step).encode(false));
     if (oldLesson) startTutorial(Math.max(0, Math.min(Tutorial.steps.length - 1, step)));
-    else if (g) start(g);
-    else { mode = 'free'; showMenu(); }
+    else if (g) {
+      // Wait for the screen to be laid out first (a new puzzle always does, while it is being drawn),
+      // and say what went wrong instead of leaving a blank board.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (disposed) return;
+        try { start(g); } catch (e) { console.error(e); showTrouble(e); }
+      }));
+    } else { mode = 'free'; showMenu(); }
   } else if (mode === 'daily') {
     factory.request(10, 10, 'MEDIUM', dailySeed(new Date()), Shape.SQUARE).then(p => start(new Game(p)), err => { loading.textContent = "Oops, today's puzzle wouldn't draw."; console.error(err); });
   } else if (mode === 'tutorial') {

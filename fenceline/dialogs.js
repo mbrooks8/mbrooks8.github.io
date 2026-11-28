@@ -1,12 +1,14 @@
 // Cards opened from the main menu and the game: settings, enter a code, stats (with history),
 // play together and join a game. Learn (with the rules) is learn.js.
 // They are taped paper cards with no titles: you tapped the button, so you know where you are.
+import { privacyChoicesNeeded, privacyChoices } from './ads.js';
 import { isApp, canKeepAwake, canVibrate, canReadClipboard, readClipboard } from './native.js';
 import { Shape, Boards, PuzzleCode } from './core.js';
 import { store, formatTime } from './store.js';
-import { el, onThemeChange, dialog, theme, text, button, pick, applyTheme, sk } from './ui.js';
+import { el, onThemeChange, dialog, theme, text, button, pick, applyTheme, sk, volumeSlider } from './ui.js';
 import { pencilColor, PENCILS, pencilLine, drawBox } from './sketch.js';
 import { icon } from './icons.js';
+import { applyVolumes, unlockSound } from './sound.js';
 import { Mode } from './room.js';
 import { cleanCode } from './net.js';
 import { SHARE_BASE, shareText, defaultName, GROUP_SIZES, diffLabel, cap, factory } from './common.js';
@@ -74,7 +76,7 @@ export function settingsDialog(onDone) {
   const toggle = (label, key) => {
     const t = el('button', { type: 'button', class: 'tick' + (store[key] ? '' : ' off'), role: 'switch', 'aria-checked': store[key] ? 'true' : 'false' });
     t.append(tickBox(store[key]), el('span', { text: label }));
-    t.addEventListener('click', () => { store[key] = !store[key]; build(); });
+    t.addEventListener('click', () => { store[key] = !store[key]; if (key === 'sound') { applyVolumes(); unlockSound(); } build(); });
     return t;
   };
   const build = () => {
@@ -83,6 +85,7 @@ export function settingsDialog(onDone) {
       toggle('Auto-X around finished numbers', 'autoCross'),
       toggle('Timer', 'showTimer'),
       toggle('Sound', 'sound'),
+      ...(store.sound ? [volumeSlider('Effects', 'sfxVolume', 'fence'), volumeSlider('Music', 'musicVolume')] : []),
       ...(canVibrate() ? [toggle('Vibrate', 'haptics')] : []),
       ...(canKeepAwake() ? [toggle('Keep screen on', 'keepAwake')] : []),
       el('hr', { class: 'divider' }),
@@ -96,6 +99,8 @@ export function settingsDialog(onDone) {
       })),
       el('div', { class: 'picks around gap16' }, ...[['system', 'Auto'], ['day', 'Day'], ['night', 'Night']].map(([k, label]) =>
         pick(label, store.theme === k, () => { store.theme = k; applyTheme(); onThemeChange.forEach(f => f()); build(); }))),
+      // EU/UK players can change their ad consent (production app only; Google says when it's needed).
+      ...(privacyChoicesNeeded() ? [el('div', { class: 'gap12 center' }, button('Privacy choices', () => { d.close(); privacyChoices(); }, { size: 17, kind: 'link' }))] : []),
       ...(isApp ? [] : [el('p', { class: 'about gap16' },
         'Playing on Android? ', el('a', { href: './Fenceline.apk', download: '' }, 'Download the app'), '.')]),
     );

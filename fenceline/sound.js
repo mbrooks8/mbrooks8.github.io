@@ -2,8 +2,9 @@
 // Scratches are filtered noise with a grainy envelope; chimes are little wooden/marimba tones.
 // Nothing plays until the first tap (browsers need one), and nothing at all with Sound off.
 import { store } from './store.js';
+import { startMusic } from './music.js';
 
-let ctx = null, out = null, noise = null;
+let ctx = null, out = null, noise = null, musicBus = null;
 let lastAt = {};
 
 function audio() {
@@ -18,8 +19,9 @@ function audio() {
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -18; comp.ratio.value = 4;
   out = ctx.createGain();
-  out.gain.value = 0.7;
-  out.connect(comp); comp.connect(ctx.destination);
+  musicBus = ctx.createGain();
+  out.connect(comp); musicBus.connect(comp); comp.connect(ctx.destination);
+  applyVolumes();
   // One second of soft (pinkish) noise, reused by every scratch.
   const n = ctx.sampleRate;
   noise = ctx.createBuffer(1, n, n);
@@ -33,11 +35,26 @@ function audio() {
   return ctx;
 }
 
+/** Sets the sound-effects and music levels from Settings (call again whenever a slider moves). */
+export function applyVolumes() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  out.gain.setTargetAtTime(0.7 * (store.sfxVolume / 100) ** 2, t, 0.02);
+  musicBus.gain.setTargetAtTime(store.sound ? (store.musicVolume / 100) ** 2 : 0, t, 0.05);
+}
+
+/** For music.js: the shared audio context and the music level control (null if audio isn't available). */
+export function musicAudio() {
+  const c = audio();
+  return c ? { ctx: c, bus: musicBus, note, noise } : null;
+}
+
 /** Call from a tap: wakes the audio up (browsers only allow it after a gesture). */
 export function unlockSound() {
   if (!store.sound) return;
   const c = audio();
   if (c && c.state !== 'running') c.resume().catch(() => {});
+  startMusic();
 }
 
 function ready() {
@@ -91,7 +108,7 @@ function tap(c, t, { gain = 0.35, freq = 900 } = {}) {
 }
 
 /** A little wooden note (marimba-ish): a sine with a quick, quiet overtone. */
-function note(c, t, f, { gain = 0.22, dur = 0.55, bright = 0.25 } = {}) {
+export function note(c, t, f, { gain = 0.22, dur = 0.55, bright = 0.25, dest } = {}) {
   const g = c.createGain();
   g.gain.setValueAtTime(0, t);
   g.gain.linearRampToValueAtTime(gain, t + 0.006);
@@ -102,7 +119,7 @@ function note(c, t, f, { gain = 0.22, dur = 0.55, bright = 0.25 } = {}) {
   g2.gain.setValueAtTime(bright, t);
   g2.gain.exponentialRampToValueAtTime(0.001, t + Math.min(0.12, dur));
   const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
-  o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(lp); lp.connect(out);
+  o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(lp); lp.connect(dest || out);
   o1.start(t); o2.start(t); o1.stop(t + dur + 0.05); o2.stop(t + dur + 0.05);
 }
 

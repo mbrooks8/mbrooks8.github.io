@@ -30,6 +30,9 @@ export const store = {
   get showErrors() { return bool('showErrors', true); }, set showErrors(v) { set('showErrors', v); },
   get showTimer() { return bool('showTimer', true); }, set showTimer(v) { set('showTimer', v); },
   get sound() { return bool('sound', true); }, set sound(v) { set('sound', v); },
+  /** Volume sliders, 0-100: sound effects and the background music. */
+  get sfxVolume() { return Math.max(0, Math.min(100, int('sfxVolume', 100))); }, set sfxVolume(v) { set('sfxVolume', Math.round(v)); },
+  get musicVolume() { return Math.max(0, Math.min(100, int('musicVolume', 30))); }, set musicVolume(v) { set('musicVolume', Math.round(v)); },
   get haptics() { return bool('haptics', true); }, set haptics(v) { set('haptics', v); },
   get keepAwake() { return bool('keepAwake', true); }, set keepAwake(v) { set('keepAwake', v); },
   get noHints() { return bool('noHints', false); }, set noHints(v) { set('noHints', v); },
@@ -55,6 +58,10 @@ export const store = {
   lessonDone(i) { return (int('lessonsDone', 0) >> i) & 1; },
   markLessonDone(i) { set('lessonsDone', int('lessonsDone', 0) | (1 << i)); },
   get seenIntro() { return bool('seenIntro', false); }, set seenIntro(v) { set('seenIntro', v); },
+
+  /** Ads (production app only, ads.js): puzzles finished since the last video, and when that video played (ms). */
+  get adWins() { return int('adWins', 0); }, set adWins(v) { set('adWins', v); },
+  get adLast() { return int('adLast', 0); }, set adLast(v) { set('adLast', v); },
 
   /** Android app: how Play together connects, 'online' or 'nearby'. */
   get mpVia() { return get('mpVia', 'online') === 'nearby' ? 'nearby' : 'online'; }, set mpVia(v) { set('mpVia', v === 'nearby' ? 'nearby' : 'online'); },

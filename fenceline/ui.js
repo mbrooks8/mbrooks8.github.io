@@ -2,6 +2,7 @@
 import { DAY, NIGHT, pencilColor, paperTexture, drawBox, rgba, drawRing, drawShaded, drawWash, drawUnderline, inkOn } from './sketch.js';
 import { icon } from './icons.js';
 import { store } from './store.js';
+import { play as playSound, applyVolumes } from './sound.js';
 
 export const theme = { night: false, pal: DAY, accent: pencilColor(0, false) };
 
@@ -205,3 +206,11 @@ export function closeTopDialog() {
 /** The dialog on top, or null. */
 export function topDialog() { return openDialogs[openDialogs.length - 1] || null; }
 export function closeAllDialogs() { [...openDialogs].forEach(d => d.close()); }
+
+/** A volume slider row for a saved setting ('sfxVolume' or 'musicVolume'); [sample] plays a sound when let go. */
+export function volumeSlider(label, key, sample) {
+  const input = el('input', { type: 'range', min: '0', max: '100', step: '5', value: String(store[key]), 'aria-label': label + ' volume', class: 'vol' });
+  input.addEventListener('input', () => { store[key] = +input.value; applyVolumes(); });
+  if (sample) input.addEventListener('change', () => playSound(sample));
+  return el('label', { class: 'volrow' }, el('span', { text: label }), input);
+}
