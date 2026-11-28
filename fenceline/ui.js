@@ -3,6 +3,7 @@ import { DAY, NIGHT, setPaper, pencilColor, paperTexture, drawBox, rgba, drawRin
 import { icon } from './icons.js';
 import { store } from './store.js';
 import { backgroundById } from './cosmetics.js';
+import { motifTile, motifCorner } from './stationery.js';
 import { play as playSound, applyVolumes } from './sound.js';
 
 export const theme = { night: false, pal: DAY, accent: pencilColor(0, false) };
@@ -27,6 +28,8 @@ export function applyTheme() {
   root.style.setProperty('--accentTint', rgba(theme.accent, 0x22 / 255));
   root.style.setProperty('--onAccent', inkOn(theme.accent, '#2E2925', '#FFF8EC'));
   root.style.setProperty('--paperImg', `url(${paperTexture(theme.night)})`);
+  root.style.setProperty('--motifTile', motifTile(bg.motif, theme.night));
+  root.style.setProperty('--motifCorner', motifCorner(bg.motif, theme.night));
   const meta = document.querySelector('meta[name=theme-color]');
   if (meta) meta.setAttribute('content', p.paper);
   redrawBoxes();

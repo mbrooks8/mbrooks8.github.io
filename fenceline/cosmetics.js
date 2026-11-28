@@ -34,6 +34,25 @@ export const BACKGROUNDS = priced([
   { id: 'twilight', name: 'Twilight', rarity: 'rare',
     day: { paper: '#DCDDF0', paperShade: '#CBCDE6', card: '#ECEDF8', ruling: 'rgba(100,90,190,0.2)' },
     night: { paper: '#1D1F33', paperShade: '#252842', card: '#2A2D4A', ruling: 'rgba(130,120,220,0.17)' } },
+  // Stationery papers: a tint plus faint pencil doodles ([motif], drawn by stationery.js). Only ever add to the end.
+  { id: 'cats', name: 'Cat nap', rarity: 'epic', motif: 'cat',
+    day: { paper: '#F6EADB', paperShade: '#EEDCC8', card: '#FCF4EA', ruling: 'rgba(170,110,80,0.16)' },
+    night: { paper: '#2C2420', paperShade: '#372D27', card: '#3A302A', ruling: 'rgba(190,140,110,0.13)' } },
+  { id: 'fish', name: 'Fishbowl', rarity: 'epic', motif: 'fish',
+    day: { paper: '#E3F0EF', paperShade: '#D3E6E5', card: '#F1F8F7', ruling: 'rgba(60,130,160,0.17)' },
+    night: { paper: '#1C2729', paperShade: '#243235', card: '#29373A', ruling: 'rgba(90,160,180,0.14)' } },
+  { id: 'plants', name: 'Greenhouse', rarity: 'epic', motif: 'plant',
+    day: { paper: '#EBF0DF', paperShade: '#DEE6CF', card: '#F5F8EE', ruling: 'rgba(100,140,80,0.17)' },
+    night: { paper: '#212921', paperShade: '#2A332A', card: '#2E382E', ruling: 'rgba(120,160,100,0.14)' } },
+  { id: 'stars', name: 'Stargazer', rarity: 'rare', motif: 'stars',
+    day: { paper: '#E6E5F2', paperShade: '#D8D6EA', card: '#F2F1F9', ruling: 'rgba(100,90,180,0.17)' },
+    night: { paper: '#1B1D30', paperShade: '#23263D', card: '#282B45', ruling: 'rgba(140,130,220,0.15)' } },
+  { id: 'clouds', name: 'Cloudy day', rarity: 'rare', motif: 'clouds',
+    day: { paper: '#EAF1F7', paperShade: '#DBE7F0', card: '#F5F9FC', ruling: 'rgba(80,130,180,0.17)' },
+    night: { paper: '#1E252D', paperShade: '#262F39', card: '#2B3540', ruling: 'rgba(110,150,200,0.14)' } },
+  { id: 'bakery', name: 'Bakery', rarity: 'rare', motif: 'bakery',
+    day: { paper: '#F8EEDC', paperShade: '#F0E1C8', card: '#FDF6EA', ruling: 'rgba(190,120,90,0.16)' },
+    night: { paper: '#2D2620', paperShade: '#382F28', card: '#3B322A', ruling: 'rgba(200,140,110,0.13)' } },
 ]);
 
 /** Every ping feeling the game can show. Only the key goes over the wire, so a friend sees yours even without the pack. */
