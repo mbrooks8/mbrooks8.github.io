@@ -91,6 +91,31 @@ export function openExternal(url) {
 
 export function deviceName() { return isApp ? String(call('deviceName') || '').slice(0, 20) : ''; }
 
+/** Can this app save a file to the phone (video from the replay)? Older app builds can't. */
+export const canSaveFile = () => isApp && !!native && typeof native.saveStart === 'function';
+
+/**
+ * Saves [blob] as [name] on the phone (Movies/Fenceline), in pieces so a long video never sits in one huge string.
+ * Returns where it went ("Movies/Fenceline"), or '' when it didn't work.
+ */
+export async function saveFile(blob, name) {
+  if (!canSaveFile()) return '';
+  const type = (blob.type || 'video/mp4').split(';')[0];
+  if (call('saveStart', name, type) !== true) return '';
+  const CHUNK = 192 * 1024;
+  for (let at = 0; at < blob.size; at += CHUNK) {
+    const text = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result));
+      r.onerror = () => res('');
+      r.readAsDataURL(blob.slice(at, at + CHUNK));
+    });
+    const b64 = text.slice(text.indexOf(',') + 1);
+    if (!b64 || call('saveChunk', b64) !== true) { call('saveAbort'); return ''; }
+  }
+  return String(call('saveEnd') || '');
+}
+
 // ---- events from the app ----
 
 const handlers = new Map();

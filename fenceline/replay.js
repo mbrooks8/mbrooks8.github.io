@@ -1,13 +1,14 @@
 // Watch a finished game again: its timelapse (timelapse.js) played on a small board in a taped card.
 // Play / pause, a pencil line to scrub along, and the game clock. Co-op games show everyone's pencils.
-import { Game, PuzzleCode } from './core.js';
+import { Game, PuzzleCode, Boards } from './core.js';
 import { formatTime } from './store.js';
 import { el, dialog, theme, sk } from './ui.js';
 import { icon } from './icons.js';
 import { BoardView } from './board.js';
-import { pencilColor, pencilStyle, pencilSwatch, pencilLine } from './sketch.js';
-import { factory } from './common.js';
-import { Recorder, Kind, findTimelapse, playbackTimes } from './timelapse.js';
+import { pencilColor, pencilStyle, pencilSwatch, pencilLine, pencilCircle } from './sketch.js';
+import { factory, diffLabel } from './common.js';
+import { Recorder, Kind, findTimelapse, playbackTimes, hintEvents } from './timelapse.js';
+import { canMakeVideo, createVideoCapture, drawVideoFrame, saveVideo } from './replay-video.js';
 
 /** Opens the timelapse of a history entry ({code, tl, ms}). Returns false when there isn't one. */
 export function replayDialog(entry) {
@@ -23,12 +24,15 @@ export function replayDialog(entry) {
   const line = el('canvas', { class: 'scrub', 'aria-label': 'Move through the game', role: 'slider' });
   const clock = el('div', { class: 'clock', text: '0:00' });
   const who = el('div', { class: 'players center', hidden: true });
+  // Where a hint was taken (a little lit bulb on the line) and, when one just happened, who took it.
+  const note = el('div', { class: 'replaynote center', 'aria-live': 'polite' });
+  const saveBtn = canMakeVideo() ? el('button', { type: 'button', class: 'tool', 'aria-label': 'Save as video' }, icon('download', 24)) : null;
   const col = el('div', { class: 'col replaycard', style: 'gap:8px' },
-    el('div', { class: 'boardframe' }, canvas, loading), el('div', { class: 'replaybar' }, playBtn, line, clock), who);
+    el('div', { class: 'boardframe' }, canvas, loading), el('div', { class: 'replaybar' }, playBtn, line, clock, ...(saveBtn ? [saveBtn] : [])), note, who);
 
-  let board = null, game = null, rec = null, at = [], total = 0;
+  let board = null, game = null, rec = null, at = [], total = 0, hints = [], status = '', cap = null;
   let idx = 0, pos = 0, playing = false, ended = false, raf = 0, lastFrame = 0, closed = false;
-  const d = dialog(col, { onClose: () => { closed = true; cancelAnimationFrame(raf); if (board) board.destroy(); } });
+  const d = dialog(col, { onClose: () => { closed = true; if (cap) cap.cancel(); cancelAnimationFrame(raf); if (board) board.destroy(); } });
 
   const setIcon = name => { ring.querySelector('svg').replaceWith(icon(name, 26)); playBtn.setAttribute('aria-label', { play: 'Play', pause: 'Pause', restart: 'Watch again' }[name]); };
 
@@ -45,8 +49,32 @@ export function replayDialog(entry) {
     pencilLine(ctx, x0, y, x1, y, theme.pal.inkSoft, 1.6, 7, 2);
     const f = total > 0 ? Math.min(1, pos / total) : 0;
     if (f > 0) pencilLine(ctx, x0, y, x0 + (x1 - x0) * f, y, theme.accent, 3.4, 11, 2);
+    // A hint: a small ring and tick above the line, in the pencil of whoever took it.
+    hints.forEach((h, k) => {
+      const x = x0 + (x1 - x0) * (total > 0 ? at[h.i] / total : 0);
+      const c = hintColor(h);
+      pencilLine(ctx, x, y - 2, x, y - 7, c, 2, 30 + k, 1);
+      pencilCircle(ctx, x, y - 12, 4.2, c, 2, 40 + k);
+    });
     ctx.beginPath(); ctx.arc(x0 + (x1 - x0) * f, y, 5, 0, Math.PI * 2); ctx.fillStyle = theme.accent; ctx.fill();
     line.setAttribute('aria-valuenow', String(Math.round(f * 100)));
+  };
+
+  const coop = () => !!rec && rec.players.size >= 2;
+  const hintColor = h => (coop() && rec.players.has(h.player) ? pencilColor(rec.players.get(h.player)[0], theme.night) : theme.pal.hint);
+  /** "Sam took a hint · 1:23" for a few seconds after a hint (co-op names who; alone it just says when). */
+  const hintNote = () => {
+    let h = null;
+    for (const e of hints) if (at[e.i] <= pos && pos < at[e.i] + 3000) h = e;
+    if (!h) return null;
+    const what = h.clear ? 'cleared mistakes' : 'took a hint';
+    const nm = coop() ? (rec.players.has(h.player) && rec.players.get(h.player)[1]) || 'Friend' : '';
+    return { text: nm ? `${nm} ${what} · ${formatTime(h.t)}` : `${h.clear ? 'Cleared mistakes' : 'Hint'} · ${formatTime(h.t)}`, color: hintColor(h) };
+  };
+  const showNote = () => {
+    const h = hintNote();
+    note.textContent = status || (h ? h.text : '');
+    note.style.color = !status && h ? h.color : '';
   };
 
   const apply = mv => {
@@ -64,12 +92,45 @@ export function replayDialog(entry) {
     clock.textContent = formatTime(idx >= at.length ? entry.ms || rec.lastT : idx ? rec.moves[idx - 1].t : 0);
     board.invalidate();
     drawLine();
+    showNote();
   };
+
+  // Save as video: play it once more, recording every picture, then keep the file.
+  const videoFrame = ctx => {
+    const h = hintNote();
+    const names = coop() ? [...rec.players.values()].map(([, nm]) => nm || 'Friend').join(' · ') : '';
+    drawVideoFrame(ctx, canvas, {
+      title: `Fenceline · ${Boards.label(code.shape, code.width, code.height)} ${diffLabel(code.difficulty)}`,
+      clock: clock.textContent, note: h ? h.text : names, noteColor: h ? h.color : null,
+      look: { pal: theme.pal, font: getComputedStyle(document.body).fontFamily || 'sans-serif' },
+    });
+  };
+  const finishVideo = async () => {
+    const c = cap;
+    await new Promise(r => setTimeout(r, 2200)); // hold on the finished board
+    if (closed) { c.cancel(); return; }
+    status = 'Saving…'; showNote();
+    const blob = await c.stop();
+    const name = `fenceline-${new Date().toISOString().slice(0, 10)}-${code.width}x${code.height}.${c.ext}`;
+    try { status = await saveVideo(blob, name); } catch (e) { status = "Couldn't save the video."; }
+    cap = null; saveBtn.disabled = false;
+    if (!closed) showNote();
+  };
+  const makeVideo = () => {
+    if (!game || cap) return;
+    pause(); ended = false; rewind(); showAt(0);
+    status = 'Recording… keep this open.';
+    try { cap = createVideoCapture(videoFrame); cap.start(); } catch (e) { cap = null; status = "Couldn't make a video here."; showNote(); return; }
+    saveBtn.disabled = true;
+    start();
+  };
+  if (saveBtn) saveBtn.addEventListener('click', makeVideo);
 
   const finish = () => {
     playing = false; ended = true;
     setIcon('restart');
     if (game.isSolved()) board.playSolved({ celebrate: false });
+    if (cap) finishVideo();
   };
   const tick = now => {
     raf = 0;
@@ -80,17 +141,19 @@ export function replayDialog(entry) {
     raf = requestAnimationFrame(tick);
   };
   const start = () => {
+    if (!cap) status = '';
     if (ended || pos >= total) { ended = false; rewind(); showAt(0); }
     playing = true; setIcon('pause');
     lastFrame = performance.now();
     if (!raf) raf = requestAnimationFrame(tick);
   };
   const pause = () => { playing = false; setIcon('play'); cancelAnimationFrame(raf); raf = 0; };
-  playBtn.addEventListener('click', () => { if (!game) return; if (playing) pause(); else start(); });
+  playBtn.addEventListener('click', () => { if (!game || cap) return; if (playing) pause(); else start(); });
 
   // Tap or drag along the line to jump to any moment.
   const seek = ev => {
-    if (!game) return;
+    if (!game || cap) return;
+    status = '';
     const r = line.getBoundingClientRect();
     const f = Math.max(0, Math.min(1, (ev.clientX - r.left - 6) / Math.max(1, r.width - 12)));
     if (ended) { ended = false; setIcon('play'); rewind(); }
@@ -116,6 +179,7 @@ export function replayDialog(entry) {
     }
     board.setGame(game);
     ({ at, total } = playbackTimes(rec.moves));
+    hints = hintEvents(rec.moves);
     showAt(0);
     setTimeout(() => { if (!closed && !playing && pos === 0) start(); }, 400);
   }, () => { loading.textContent = "Oops, that puzzle wouldn't draw."; });

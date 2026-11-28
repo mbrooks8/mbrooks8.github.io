@@ -270,7 +270,9 @@ export function showGame(opts) {
       const same = pendingFix && pendingFix.length === h.wrong.length && h.wrong.every(e => pendingFix.includes(e));
       if (same) {
         hintsTaken++;
+        track();
         const n = g.clearMistakes();
+        track(Kind.HINT); // the replay shows it as a hint, with who took it
         sharedHints();
         play('erase');
         board.clearHighlights();
@@ -331,7 +333,9 @@ export function showGame(opts) {
     // With "No hints" on it is Check, which only looks for mistakes.
     item(hintsOff() ? 'check' : 'bulb', hintsOff() ? 'Check' : 'Hint', () => hintsOff() ? check() : hint(), 'var(--hint)', 'shows the next move');
     item('eraser', 'Clear mistakes', () => {
+      track();
       const n = game ? game.clearMistakes() : 0;
+      track(Kind.HINT); // the replay shows it as a hint, with who took it
       sharedHints();
       if (n) play('erase');
       setNote(n === 0 ? 'No mistakes!' : `Erased ${n} mark${n === 1 ? '' : 's'}.`);

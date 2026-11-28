@@ -112,6 +112,8 @@ canvas.replay { width: 100%; height: 100%; display: block; touch-action: none; }
 .replaybar .tool { flex: none; min-width: 0; }
 .replaybar .tool .ring { width: 48px; height: 48px; }
 canvas.scrub { flex: 1; height: 28px; min-width: 60px; touch-action: none; cursor: pointer; }
+.replaybar .tool:disabled { opacity: .4; }
+.replaynote { min-height: 1.4em; font-size: 16px; color: var(--inkSoft); }
 .replaybar .clock { min-width: 3.2em; text-align: right; font-size: 17px; color: var(--inkSoft); font-variant-numeric: tabular-nums; }
 
 /* ---- game ---- */

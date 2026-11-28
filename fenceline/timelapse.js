@@ -113,6 +113,22 @@ export class Recorder {
   }
 }
 
+/**
+ * The hints in a game, for the replay: one event per hint, even when it changed several pieces at once
+ * (Clear mistakes). {i: first move, t: game time, player: who took it, clear: it only erased marks}.
+ * Old timelapses (and games with no hints) simply have none.
+ */
+export function hintEvents(moves) {
+  const out = [];
+  moves.forEach((m, i) => {
+    if (m.kind !== Kind.HINT) return;
+    const last = out[out.length - 1];
+    if (last && last.t === m.t && last.player === m.player && last.last === i - 1) { last.last = i; last.clear = last.clear && !m.value; return; }
+    out.push({ i, last: i, t: m.t, player: m.player, clear: !m.value });
+  });
+  return out;
+}
+
 // ---- kept in localStorage ----
 
 const lines = () => (store.timelapses || '').split('\n').filter(l => l.includes(' '));
