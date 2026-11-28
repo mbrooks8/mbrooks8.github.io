@@ -11,6 +11,8 @@ function call(name, ...args) {
 }
 
 export function platform() { return isApp ? String(call('platform') || 'android') : 'web'; }
+/** Ads are on only in the Play Store production app; never on the web, for testers or in the website APK. */
+export function adsOn() { return isApp && call('ads') === true; }
 
 // ---- one-time import of the old (1.x) app's settings, stats, history and saved game ----
 

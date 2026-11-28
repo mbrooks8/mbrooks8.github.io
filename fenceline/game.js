@@ -399,7 +399,7 @@ export function showGame(opts) {
       } else {
         store.tutorialStep = 0;
         kids.push(text("You've got the basics!", { size: 16, cls: 'center' }));
-        kids.push(el('div', { class: 'gap8' }, button('Play a 5×5', () => { d.close(); newPuzzle(5, 5, 'EASY', null, Shape.SQUARE); }, { size: 21, kind: 'primary' })));
+        kids.push(el('div', { class: 'gap8' }, button('Play a 3×3', () => { d.close(); newPuzzle(3, 3, 'EASY', null, Shape.SQUARE); }, { size: 21, kind: 'primary' })));
       }
     } else if (mode === 'free') {
       kids.push(el('div', { class: 'gap12' }, button('Next puzzle', () => {
